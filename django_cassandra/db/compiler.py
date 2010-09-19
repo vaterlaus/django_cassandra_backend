@@ -58,15 +58,13 @@ class CassandraQuery(NonrelQuery):
         rows = []
         for element in key_slice:
             if element.columns:
-                row = {}
-                row[self.pk_column] = element.key
-                for column in element.columns:
-                    row[column.column.name] = column.column.value
+                row = self._convert_column_list_to_row(element.columns, self.pk_column, element.key)
                 rows.append(row)
         return rows
     
-    def _convert_column_list_to_row(self, column_list):
+    def _convert_column_list_to_row(self, column_list, pk_column_name, pk_value):
         row = {}
+        row[pk_column_name] = pk_value
         for column in column_list:
             row[column.column.name] = column.column.value
         return row
@@ -81,8 +79,7 @@ class CassandraQuery(NonrelQuery):
         if range_predicate._is_exact():
             column_list = db_connection.client.get_slice(range_predicate.start, column_parent, slice_predicate, ConsistencyLevel.ONE)
             if column_list:
-                row = self._convert_column_list_to_row(column_list)
-                row[self.pk_column] = range_predicate.start
+                row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
                 rows = [row]
             else:
                 rows = []
@@ -118,7 +115,7 @@ class CassandraQuery(NonrelQuery):
             (range_predicate.end == range_predicate.start) and
             range_predicate.start_inclusive and
             range_predicate.end_inclusive):
-            index_expression = IndexExpression(range_predicate.column, IndexOperator.EQ, str(range_predicate.start))
+            index_expression = IndexExpression(range_predicate.column, IndexOperator.EQ, unicode(range_predicate.start))
             index_expressions.append(index_expression)
         else:
             # NOTE: These range queries don't work with the current version of cassandra
@@ -129,11 +126,11 @@ class CassandraQuery(NonrelQuery):
             # on indexed columns (they still can be performed, just inefficiently).
             if range_predicate.start:
                 index_op = IndexOperator.GTE if range_predicate.start_inclusive else IndexOperator.GT
-                index_expression = IndexExpression(str(range_predicate.column), index_op, str(range_predicate.start))
+                index_expression = IndexExpression(unicode(range_predicate.column), index_op, unicode(range_predicate.start))
                 index_expressions.append(index_expression)
             if range_predicate.end:
                 index_op = IndexOperator.LTE if range_predicate.end_inclusive else IndexOperator.LT
-                index_expression = IndexExpression(str(range_predicate.column), index_op, str(range_predicate.end))
+                index_expression = IndexExpression(unicode(range_predicate.column), index_op, unicode(range_predicate.end))
                 index_expressions.append(index_expression)
                 
         assert(len(index_expressions) > 0)
@@ -284,7 +281,13 @@ class SQLCompiler(NonrelCompiler):
     # db_type is the string that you used in the DatabaseCreation mapping
     def convert_value_from_db(self, db_type, value):
         
-        if db_type == 'date':
+        if  db_type.startswith('ListField:'):
+            db_sub_type = db_type.split(':', 1)[1]
+            value = convert_string_to_list(value)
+            if isinstance(value, (list, tuple)) and len(value):
+                value = [self.convert_value_from_db(db_sub_type, subvalue)
+                         for subvalue in value]
+        elif db_type == 'date':
             dt = datetime.datetime.strptime(value, '%Y-%m-%d')
             value = dt.date()
         elif db_type == 'datetime':
@@ -304,7 +307,12 @@ class SQLCompiler(NonrelCompiler):
     # This gets called for each field type when you insert() an entity.
     # db_type is the string that you used in the DatabaseCreation mapping
     def convert_value_for_db(self, db_type, value):
-        if db_type == 'datetime':
+        if db_type.startswith('ListField:'):
+            db_sub_type = db_type.split(':', 1)[1]
+            if isinstance(value, (list, tuple)) and len(value):
+                value = [self.convert_value_for_db(db_sub_type, subvalue) for subvalue in value]
+            value = convert_list_to_string(value)
+        elif db_type == 'datetime':
             value = value.strftime('%Y-%m-%d %H:%M:%S.%f')
         elif db_type == 'time':
             value = value.strftime('%H:%M:%S.%f')
@@ -327,13 +335,13 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         else:
             key = uuid4()
         
-        key = str(key)
+        key = unicode(key)
         
         timestamp = get_next_timestamp()
         
         mutation_list = []
         for name, value in data.items():
-            mutation = Mutation(column_or_supercolumn=ColumnOrSuperColumn(column=Column(name=name, value=str(value), clock=Clock(timestamp))))
+            mutation = Mutation(column_or_supercolumn=ColumnOrSuperColumn(column=Column(name=name, value=unicode(value), clock=Clock(timestamp))))
             mutation_list.append(mutation)
         
         client = self.connection.db_connection.client

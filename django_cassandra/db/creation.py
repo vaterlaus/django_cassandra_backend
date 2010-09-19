@@ -18,7 +18,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
         for field in opts.local_fields:
             if field.db_index:
                 column_name = field.db_column if field.db_column else field.column
-                column_def = ColumnDef(name=str(column_name), validation_class='BytesType', index_type=IndexType.KEYS, index_name=str(column_name))
+                column_def = ColumnDef(name=unicode(column_name), validation_class='BytesType', index_type=IndexType.KEYS, index_name=unicode(column_name))
                 column_metadata.append(column_def)
                     
         column_family_def = CfDef(keyspace=keyspace_name,

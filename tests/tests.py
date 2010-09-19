@@ -18,21 +18,25 @@ class FieldsTest(TestCase):
     TEST_DATETIME2 = datetime.datetime(2010, 6, 6, 6, 20)
     TEST_TIME = datetime.time(10,14,29)
     TEST_DECIMAL = decimal.Decimal('33.55')
+    #TEST_LIST = [u'aaa',u'bbb',u'foobar',u'snafu',u'hello',u'goodbye']
     
     def setUp(self):
         self.test = Test(id='key1',
                           test_date=self.TEST_DATE,
                           test_datetime=self.TEST_DATETIME,
                           test_time=self.TEST_TIME,
-                          test_decimal=self.TEST_DECIMAL)
+                          test_decimal=self.TEST_DECIMAL
+                          #,test_list=self.TEST_LIST
+			  )
         self.test.save()
     
-    def test_dates(self):
+    def test_fields(self):
         test1 = Test.objects.get(id='key1')
         self.assertEquals(test1.test_date, self.TEST_DATE)
         self.assertEquals(test1.test_datetime, self.TEST_DATETIME)
         self.assertEquals(test1.test_time, self.TEST_TIME)
         self.assertEquals(test1.test_decimal, self.TEST_DECIMAL)
+        #self.assertEquals(test1.test_list, self.TEST_LIST)
         
         test1.test_datetime = self.TEST_DATETIME2
         test1.save()
@@ -113,6 +117,11 @@ class BasicFunctionalityTest(TestCase):
         count = hqs.count()
         self.assertEquals(count,0)
         
+    def test_default_id(self):
+        s = Slice(name='slice2')
+        s.save()
+        s2 = Slice.objects.get(name='slice2')
+        self.assertEquals(s2.name, 'slice2')
         
 SLICE_DATA_1 = ('key1', 'PCI')
 SLICE_DATA_2 = ('key2', 'Eng1')
@@ -247,7 +256,7 @@ class QueryTest(TestCase):
         qs = Host.objects.filter(slice=slice1)
         count = qs.count()
         self.assertEquals(count, 4)
-        
+
         qs = Slice.objects.filter(name__startswith='P')
         count = qs.count()
         self.assertEquals(count, 1)

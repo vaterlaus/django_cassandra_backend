@@ -149,3 +149,15 @@ def get_next_timestamp():
         _last_counter += 1
     
     return _last_time * 0x400000 + _last_counter
+
+def convert_string_to_list(s):
+    # FIXME: Shouldn't use eval here, because of security considerations
+    # (i.e. if someone could modify the data in Cassandra they could
+    # insert arbitrary Python code that would then get evaluated on
+    # the client machine. Should have code that parses the list string
+    # to construct the list or else validates the string before calling eval.
+    # But for now, during development, we'll just use the quick & dirty eval.
+    return eval(s)
+
+def convert_list_to_string(l):
+    return unicode(l)

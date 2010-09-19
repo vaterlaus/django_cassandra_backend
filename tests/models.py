@@ -1,4 +1,5 @@
 from django.db import models
+from djangotoolbox.fields import ListField
 
 class Slice(models.Model):
     name = models.CharField(max_length=64)
@@ -30,7 +31,8 @@ class Test(models.Model):
     test_datetime = models.DateTimeField(null=True)
     test_time = models.TimeField(null=True)
     test_decimal = models.DecimalField(null=True, max_digits=10, decimal_places=3)
-
+    #test_list = ListField(models.CharField(max_length=500))
+    
     class Meta:
         db_table = 'Test'
         ordering = ['id']

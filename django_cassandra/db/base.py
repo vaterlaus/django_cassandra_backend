@@ -85,4 +85,4 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         # Set up the Cassandra keyspace
         keyspace_name = self.settings_dict.get('NAME')
         self.creation.init_keyspace(keyspace_name)
-        
+

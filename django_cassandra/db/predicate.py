@@ -1,7 +1,7 @@
 import re
 from .utils import combine_rows
 
-SECONDARY_INDEX_SUPPORT_ENABLED = False
+SECONDARY_INDEX_SUPPORT_ENABLED = True
 
 class InvalidSortSpecException(Exception):
     def __init__(self):
@@ -32,11 +32,11 @@ class RangePredicate(object):
         s = '(RANGE: '
         if self.start:
             op = '<=' if self.start_inclusive else '<'
-            s += (str(self.start) + op)
+            s += (unicode(self.start) + op)
         s += self.column
         if self.end:
             op = '>=' if self.end_inclusive else '>'
-            s += (op + str(self.end))
+            s += (op + unicode(self.end))
         s += ')'
         return s
 
@@ -170,7 +170,7 @@ class OperationPredicate(object):
             self.pattern = re.compile(value, flags)
     
     def __repr__(self):
-        return '(OP: ' + self.op + ':' + str(self.value) + ')'
+        return '(OP: ' + self.op + ':' + unicode(self.value) + ')'
     
     def can_evaluate_efficiently(self, pk_column, indexed_columns):
         return False
@@ -230,7 +230,7 @@ class CompoundPredicate(object):
                     first_time = False
                 else:
                     s += ','
-                s += str(child_predicate)
+                s += unicode(child_predicate)
         s += ')'
         return s
     
