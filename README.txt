@@ -14,21 +14,25 @@ Installation
 ============
 The backend requires the 0.7 version of Cassandra. 0.7 has several features
 (e.g. programmatic creation/deletion of keyspaces & column families, secondary index
-support) that are useful with running as a Django database backend, so I targeted
-that version instead of 0.6. Unfortunately, the Cassandra Thrift API changed between
-0.6 and 0.7 so the two version are incompatible.
+support) that are useful for the Django database backend, so I targeted that
+instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
+so the two version are incompatible.
 
 There's a beta1 version of 0.7 available at the Cassandra web site. I'm actually using a
-somewhat later daily binary release dated 8/23. I obtained the daily release by following
-the "Latest Builds" link in the Cassandra downloads page, but the last few times I've
-tried it that link was dead, so I'm not sure what's going on with that. I had switched
-to the 8/23 release, because I had read that there was an issue with the secondary
+somewhat later daily binary release dated 9/4/10. You can obtain the daily release by
+following the "Latest Builds" link in the Cassandra downloads page. I had switched
+to the 9/4 release, because I had read that there was an issue with the secondary
 index support in the beta1 release and I was trying to get secondary index support
-working in the backend. As it turns out I was still seeing problems with the 8.23
-release, so I wound up disabling the secondary index code (details below), so it's
-possible/probable that the backend will work with the beta1 release, especially
-if you don't try to enable secondary index support (i.e. don't set the db_index
-to True for any of the fields). But I haven't tested with beta1, so no promises.
+working in the backend. It's possible the backend will work with beta1 release,
+but I haven't tested with beta1, so no promises. I also tried with a couple of
+the more recent daily releases (roughly mid-September) and I was seeing problems
+where the database got hosed after running the unit tests (I'm guessing from the
+way the unit tests create and destroy keyspaces & column families) and it seemed
+like the only way to recover was to delete the data files from the file system.
+So if you see that problem try reverting to the 9/4 daily build. I haven't tried
+with the most recent daily builds, so it's possible that that problem has been
+fixed (assuming it was a temporary bug in Cassandra, not something bad that the
+backend was doing).
 
 The backend also requires the Django-nonrel fork of Django and djangotoolbox.
 Both are available here: <http://www.allbuttonspressed.com/projects/django-nonrel>.
@@ -56,11 +60,11 @@ described in the Cassandra documentation.
 
 Run syncdb. This creates the keyspace (if necessary) and the column families for the
 models in the installed apps. The Cassandra backend creates one column family per
-model. It will use the db_table value from the meta settings for the name of the
+model. It uses the db_table value from the meta settings for the name of the
 column family if it's specified; otherwise it uses the default name similar to
 other backends.
 
-Now you should be able to use the normal model and query set calls from you
+Now you should be able to use the normal model and query set calls from your
 Django code.
 
 This release includes a test project and app. If you want to use the backend in
@@ -120,7 +124,9 @@ What Doesn't Work (Yet)
   investigated how this works and if it's feasible to support in Cassandra,
   although I'm guessing it probably wouldn't be too hard. For now, this means
   that several of the unit tests from djangotoolbox fail if you have that
-  in your installed apps.
+  in your installed apps. I made a preliminary pass to try to get this to
+  work, but it turned out to be more difficult than expected, so it exists
+  in a partially-completed form in the source.
 - there's no way to configure the settings used to create the keyspaces
   and column families (e.g. replication strategy, replication factor) or the
   read & write consistency levels used when querying or inserting/mutating
@@ -140,9 +146,25 @@ Known Issues
   suggested on the Django-nonrel web site, which got my further, but I still get
   an error in some Django template code that tries to render a change list (I think).
   I still need to track down what's going on there.
-- f you enable the authentication and session middleware a bunch of the
+- In some cases there's a unit test failure in the test_count test at line 269. I'm
+  suspicious that this is due to the secondary index support in Cassandra, but I
+  haven't investigated it enough to be sure of that yet.
+- There's a reported issues with using unicode strings. At this point it's
+  still unclear whether this is a problem in the Django backend or in the
+  Python Thrift bindings to Cassandra. I've think I've fixed all of the obvious
+  places in the backend code to deal properly with Unicode strings, but it's
+  possible/probable there are some remaining issues. The reported problem is with
+  using non-ASCII characters in the model definitions. This triggers an exception
+  during syncdb, so for now just don't do that. It hasn't been tested yet
+  whether there's a problem with simply storing Unicode strings as the field
+  values (as opposed to the model/field names).
+- There are a few unit tests that fail in the sites middleware. These don't fail
+  with the other nonrel backends, so it's a bug/limitation in the Cassandra backend.
+- If you enable the authentication and session middleware a bunch of the
   associated unit tests fail if you run all of the unit tests.
-  This may be related to the issue with editing users in the admin UI
+  Waldemar says that it's expected that some of these unit tests will fail,
+  because they rely on joins which aren't supported yet. I haven't verified yet
+  that all of the failures are because of joins, though.
 - the code needs a cleanup pass for things like the exception handling/safety,
   some refactoring, more pydoc comments, etc.
 - I have a feeling there are some places where I haven't completely leveraged
@@ -150,4 +172,5 @@ Known Issues
   things in the optimal way
 - the error handling/messaging isn't great for things like the Cassandra
   daemon not running, a versioning mismatch between client and Cassandra
-  daemon, etc.
+  daemon, etc. Currently you just get a somewhat uninformative exception in
+  these cases.
