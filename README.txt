@@ -8,7 +8,7 @@ format of the data stored in Cassandra may change in future versions, there's no
 promise of backwards compatibility with this version, and so on.
 
 Please let me know if you find any bugs or have any suggestions for how to improve
-the backend. You can contact me at: rob.vaterlaus@bigswitch.com
+the backend. You can contact me at: rob.vaterlaus@gmail.com
 
 Installation
 ============
