@@ -73,6 +73,19 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         self.validation = DatabaseValidation(self)
         self.introspection = DatabaseIntrospection(self)
 
+        self.read_consistency_level = self.settings_dict.get('CASSANDRA_READ_CONSISTENCY_LEVEL')
+        if self.read_consistency_level is None:
+            self.read_consistency_level = ConsistencyLevel.ONE
+        self.write_consistency_level = self.settings_dict.get('CASSANDRA_WRITE_CONSISTENCY_LEVEL')
+        if self.write_consistency_level is None:
+            self.write_consistency_level = ConsistencyLevel.ONE
+        self.max_key_count = self.settings_dict.get('CASSANDRA_MAX_KEY_COUNT')
+        if self.max_key_count is None:
+            self.max_key_count = 10000
+        self.max_column_count = self.settings_dict.get('CASSANDRA_MAX_COLUMN_COUNT')
+        if self.max_column_count is None:
+            self.max_column_count = 1000
+                    
         # Get the host and port specified in the database backend settings.
         # Default to the standard Cassandra settings.
         host = self.settings_dict.get('HOST')
@@ -87,7 +100,7 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         transport = TTransport.TFramedTransport(TTransport.TBufferedTransport(socket))
         protocol = TBinaryProtocol.TBinaryProtocolAccelerated(transport)
         client = Cassandra.Client(protocol)
-        
+
         # Create our connection wrapper
         self.db_connection = CassandraConnection(client, transport)
         self.db_connection.open()

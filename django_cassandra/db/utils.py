@@ -140,18 +140,13 @@ _last_counter = None
     
 def get_next_timestamp():
     # The timestamp is a 64-bit integer
-    # We use the top 32 bits for the integral part of time.time()
-    # The next 10 bits are the fractional part of time.time() with
-    # roughly millisecond precision.
-    # The last 22 bits are a counter that is incremented if the current
-    # time value from the top 42 bits is the same as the last
+    # We use the top 44 bits for the current time in milliseconds since the
+    # epoch. The low 20 bits are a counter that is incremented if the current
+    # time value from the top 44 bits is the same as the last
     # time value. This guarantees that a new timestamp is always
     # greater than the previous timestamp
     global _last_time, _last_counter
-    current_real_time = time.time()
-    current_seconds = int(current_real_time)
-    current_subsecond = int((current_real_time % current_seconds) * 1024)
-    current_time = (current_seconds * 1024) + current_subsecond
+    current_time = int(time.time() * 1000)
     
     if (_last_time == None) or (current_time > _last_time):
         _last_time = current_time
@@ -159,7 +154,7 @@ def get_next_timestamp():
     else:
         _last_counter += 1
     
-    return _last_time * 0x400000 + _last_counter
+    return _last_time * 0x100000 + _last_counter
 
 def convert_string_to_list(s):
     # FIXME: Shouldn't use eval here, because of security considerations

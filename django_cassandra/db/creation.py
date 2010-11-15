@@ -17,8 +17,41 @@ from djangotoolbox.db.creation import NonrelDatabaseCreation
 from cassandra import Cassandra
 from cassandra.ttypes import *
 from django.core.management import call_command
+from .utils import get_next_timestamp
 
 class DatabaseCreation(NonrelDatabaseCreation):
+
+    data_types = {
+        'AutoField':         'text',
+        'BigIntegerField':   'long',
+        'BooleanField':      'bool',
+        'CharField':         'text',
+        'CommaSeparatedIntegerField': 'text',
+        'DateField':         'date',
+        'DateTimeField':     'datetime',
+        'DecimalField':      'decimal:%(max_digits)s,%(decimal_places)s',
+        'EmailField':        'text',
+        'FileField':         'text',
+        'FilePathField':     'text',
+        'FloatField':        'float',
+        'ImageField':        'text',
+        'IntegerField':      'int',
+        'IPAddressField':    'text',
+        'NullBooleanField':  'bool',
+        'OneToOneField':     'integer',
+        'PositiveIntegerField': 'int',
+        'PositiveSmallIntegerField': 'int',
+        'SlugField':         'text',
+        'SmallIntegerField': 'integer',
+        'TextField':         'text',
+        'TimeField':         'time',
+        'URLField':          'text',
+        'XMLField':          'text',
+        'GenericAutoField':  'id',
+        'StringForeignKey':  'id',
+        'AutoField':         'id',
+        'RelatedAutoField':  'id',
+    }
     
     def sql_create_model(self, model, style, known_models=set()):
         
@@ -40,16 +73,6 @@ class DatabaseCreation(NonrelDatabaseCreation):
                                   column_metadata = column_metadata)
         client.system_add_column_family(column_family_def)
         return [], {}
-
-    def _get_keyspace_name(self):
-        """
-        Construct the name to use for the test keyspace. This is the regular
-        name of the keyspace (i.e. the one specified in the NAME field of the
-        database settings) prepended with 'test_'.
-        """
-        keyspace_name = self.connection.settings_dict['NAME']
-        #keyspace_name = 'test_' + base_keyspace_name
-        return keyspace_name
 
     def init_keyspace(self, keyspace_name):
         """
@@ -80,9 +103,15 @@ class DatabaseCreation(NonrelDatabaseCreation):
             # FIXME: Should maybe be more specific in terms of the exact exception
             # type we catch here (i.e. figure out exactly what exception is thrown
             # by the Thrift API).
+            replication_factor = settings_dict.get('CASSANDRA_REPLICATION_FACTOR')
+            if not replication_factor:
+                replication_factor = 1
+            replication_strategy_class = settings_dict.get('CASSANDRA_REPLICATION_STRATEGY')
+            if not replication_strategy_class:
+                replication_strategy_class = 'org.apache.cassandra.locator.SimpleStrategy'
             keyspace_def = KsDef(name=keyspace_name,
-                                 strategy_class='org.apache.cassandra.locator.SimpleStrategy',
-                                 replication_factor=1,
+                                 strategy_class=replication_strategy_class,
+                                 replication_factor=replication_factor,
                                  cf_defs=[])
             client.system_add_keyspace(keyspace_def)
             client.set_keyspace(keyspace_name)
@@ -91,7 +120,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
         user = settings_dict.get('USER')
         if user != None and user != '':
             password = settings_dict.get('PASSWORD')
-            authentication_request = Cassandra.AuthenticationRequest({user: password})
+            authentication_request = Cassandra.AuthenticationRequest({'username': user, 'password': password})
             client.login(keyspace_name, authentication_request)
     
     def drop_keyspace(self, keyspace_name, verbosity=1):
@@ -160,9 +189,23 @@ class DatabaseCreation(NonrelDatabaseCreation):
         
     def flush_table(self, table_name):
         client = self.connection.db_connection.client
-        #client.system_drop_column_family(table_name)
-        # FIXME: this should really re-add the table here
-        client.truncate(table_name)
+        
+        # FIXME: Calling truncate here seems to corrupt the secondary indexes,
+        # so for now the truncate call has been replaced with removing the
+        # row one by one. When the truncate bug has been fixed in Cassandra
+        # this should be switched back to use truncate.
+        # client.truncate(table_name)
+        
+        db_connection = self.connection.db_connection
+        column_parent = ColumnParent(column_family=table_name)
+        slice_predicate = SlicePredicate(column_names=[])
+        key_range = KeyRange(start_token = '0', end_token = '0', count = 1000)
+        key_slice_list = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, ConsistencyLevel.ONE)
+        column_path = ColumnPath(column_family=table_name)
+        timestamp = get_next_timestamp()
+        for key_slice in key_slice_list:
+            db_connection.client.remove(key_slice.key, column_path, timestamp, ConsistencyLevel.ONE)
+
         
     def sql_indexes_for_model(self, model, style):
         """

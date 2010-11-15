@@ -16,23 +16,17 @@ The backend requires the 0.7 version of Cassandra. 0.7 has several features
 (e.g. programmatic creation/deletion of keyspaces & column families, secondary index
 support) that are useful for the Django database backend, so I targeted that
 instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
-so the two version are incompatible.
+so the two version are incompatible. I'm using the beta3 version of 0.7. That's
+the only version I've tested against, so no promises if you try it with a
+different version.
 
-There's a beta1 version of 0.7 available at the Cassandra web site. I'm actually using a
-somewhat later daily binary release dated 9/4/10. You can obtain the daily release by
-following the "Latest Builds" link in the Cassandra downloads page. I had switched
-to the 9/4 release, because I had read that there was an issue with the secondary
-index support in the beta1 release and I was trying to get secondary index support
-working in the backend. It's possible the backend will work with beta1 release,
-but I haven't tested with beta1, so no promises. I also tried with a couple of
-the more recent daily releases (roughly mid-September) and I was seeing problems
-where the database got hosed after running the unit tests (I'm guessing from the
-way the unit tests create and destroy keyspaces & column families) and it seemed
-like the only way to recover was to delete the data files from the file system.
-So if you see that problem try reverting to the 9/4 daily build. I haven't tried
-with the most recent daily builds, so it's possible that that problem has been
-fixed (assuming it was a temporary bug in Cassandra, not something bad that the
-backend was doing).
+If you're updating from a previous version of the Cassandra DB backend, then it's
+possible/likely that the format it stores models/fields in Cassandra has changed,
+so you should wipe your Cassandra database. If you're using the default locations
+for things, then this should involve executing a "rm -rf /var/log/cassandra/*"
+and "rm -rf /var/lib/cassandra/*". Obviously at some point as the backend becomes
+more stable data format compatibility or migration will be supported, but for now
+it's not worth the effort.
 
 The backend also requires the Django-nonrel fork of Django and djangotoolbox.
 Both are available here: <http://www.allbuttonspressed.com/projects/django-nonrel>.
@@ -43,13 +37,25 @@ but there are probably other (better?) ways to install those things.
 You also need to generate the Python Thrift API code as described in the Cassandra
 documentation and copy the generated "cassandra" directory (from Cassandra's
 interface/gen-py directory) over to the top-level Django project directory.
+I'm using the 0.5.0 version of Thrift. I know I had problems generating the
+Java bindings for Cassandra using earlier versions of Thrift, but I'm not sure
+if this is a problem with the Python bindings, so it's possible earlier
+version will work too.
 
 To configure a project to use the Cassandra backend all you have to do is change
 the database settings in the settings.py file. Change the ENGINE value to be
 'django_cassandra.db' and the NAME value to be the name of the keyspace to use.
-You can set HOST and PORT to override the default values of 'localhost' and 9160.
+You also need to set the SUPPORTS_TRANSACTIONS setting to False, since Cassandra
+doesn't support transactions. You can set HOST and PORT to specify the host and
+port where the Cassandra daemon process is running. If these aren't specified
+then the backend uses default values of 'localhost' and 9160.
 In theory you can also set USER and PASSWORD if you're using authentication with
-Cassandra, but this hasn't been tested yet, so it may not work.
+Cassandra, but this hasn't been tested yet, so it may not work. You can also set
+a couple of optional Cassandra-specific settings in the database settings. Set the
+CASSANDRA_REPLICATION_FACTOR and CASSANDRA_STRATEGY_CLASS settings to be the
+replication factor and strategy class value you want to use when the backend
+creates the keyspace during syncdb. The default values for these settings are
+1 and "org.apache.cassandra.locator.SimpleStrategy".
 
 Configure Cassandra as described in the Cassandra documentation.
 If want to be able to do range queries over primary keys then you need to set the
@@ -94,27 +100,24 @@ What Works
 - I think all of the filter operations (e.g. gt, startswith, regex, etc.) are supported
   although it's possible I missed something
 - complex queries with Q nodes
+- basic secondary index support. If the db_index attribute of a field is set to True,
+  then the backend configures the column family to index on that field/column.
+  Currently Cassandra only really supports exact match lookups with the secondary
+  indexes, so the support is limited. Range lookups are supposed to be supported
+  in the 0.7.1 Cassandra release, so hopefully that will be available fairly soon.
 
 What Doesn't Work (Yet)
 =======================
-- Secondary Index Support: There's code in there to use secondary indexes, but
-  I was seeing weird results when I tried to execute Cassandra queries using the
-  secondary indexes so I disabled that code. Hopefully that's just an issue with the
-  specific version of Cassandra I'm using, but I haven't tried it out with a more
-  recent version to see if it's working now. If you're feeling adventurous you could
-  try it out with a newer version of Cassandra and enable the secondary index code
-  by setting the value of SECONDARY_INDEX_SUPPORT_ENABLED to True in predicate.py.
-  You enable secondary index support for fields by setting the db_index argument to
-  True when constructing the field.
 - I haven't tested all of the different field types, so there are probably
   issues there with how the data is converted to and from Cassandra with some of the
   field types. My use case was mostly string fields, so most of the testing was with
-  that. I've also tried out date, datetime, time, and decimal fields, so I think
-  those should work too, but I haven't tried anything else.
+  that. I've also tried out integer, float, boolean, date, datetime, time, text
+  and decimal fields, so I think those should work too, but I haven't tested all
+  of the possible field types.
 - joins
 - chunked queries. It just tries to get everything all at once from Cassandra.
   Currently the maximum that it can get (i.e. the count value in the Cassandra
-  Thrift API) is set semi-arbitrarily to 10000, so if you try to query over a
+  Thrift API) is set semi-arbitrarily to 1000, so if you try to query over a
   column family with more rows (or columns) than that it may not work.
   Probably the value could be set higher than that, but at some point Cassandra
   fails if it's too big (i.e. it didn't work if I set it to 0x7fffffff).
@@ -127,12 +130,10 @@ What Doesn't Work (Yet)
   in your installed apps. I made a preliminary pass to try to get this to
   work, but it turned out to be more difficult than expected, so it exists
   in a partially-completed form in the source.
-- there's no way to configure the settings used to create the keyspaces
-  and column families (e.g. replication strategy, replication factor) or the
-  read & write consistency levels used when querying or inserting/mutating
-  columns in Cassandra. My plan was to add global database settings and
-  per-model Meta settings to configure those things, but I haven't gotten to
-  it yet.
+- there's no way to configure the read & write consistency levels used when
+  querying or inserting/mutating columns in Cassandra. My plan was to add global
+  database settings and possibly per-model settings to configure those things,
+  but I haven't gotten to it yet. Per-operation overrides of these values
 - Cassandra authentication. Actually this may work but I haven't tested it yet.
   There's code in there that tries to login to Cassandra if the USER and
   PASSWORD are specified in the database settings, but I've only tested with
@@ -146,9 +147,6 @@ Known Issues
   suggested on the Django-nonrel web site, which got my further, but I still get
   an error in some Django template code that tries to render a change list (I think).
   I still need to track down what's going on there.
-- In some cases there's a unit test failure in the test_count test at line 269. I'm
-  suspicious that this is due to the secondary index support in Cassandra, but I
-  haven't investigated it enough to be sure of that yet.
 - There's a reported issues with using unicode strings. At this point it's
   still unclear whether this is a problem in the Django backend or in the
   Python Thrift bindings to Cassandra. I've think I've fixed all of the obvious
@@ -174,3 +172,11 @@ Known Issues
   daemon not running, a versioning mismatch between client and Cassandra
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
+- Currently the code is hard-coded to use a consistency level of ONE for all
+  operations. The simplest way I was planning on fixing this was to add
+  CASSANDRA_READ_CONSISTENCY_LEVEL and CASSANDRA_WRITE_CONSISTENCY_LEVEL
+  database settings that would be used for those values. If an application
+  needed to use different values of these things for different operations
+  that would be supported by having multiple database settings and using
+  the Django multiple database support. Another possibility would be to add a
+  way to override these values for different models.

@@ -25,6 +25,8 @@ class FieldsTest(TestCase):
     TEST_DATETIME2 = datetime.datetime(2010, 6, 6, 6, 20)
     TEST_TIME = datetime.time(10,14,29)
     TEST_DECIMAL = decimal.Decimal('33.55')
+    TEST_TEXT = "Practice? We're talking about practice?"
+    TEST_TEXT2 = "I'm a man. I'm 40."
     #TEST_LIST = [u'aaa',u'bbb',u'foobar',u'snafu',u'hello',u'goodbye']
     
     def setUp(self):
@@ -32,7 +34,8 @@ class FieldsTest(TestCase):
                           test_date=self.TEST_DATE,
                           test_datetime=self.TEST_DATETIME,
                           test_time=self.TEST_TIME,
-                          test_decimal=self.TEST_DECIMAL
+                          test_decimal=self.TEST_DECIMAL,
+                          test_text=self.TEST_TEXT
                           #,test_list=self.TEST_LIST
 			  )
         self.test.save()
@@ -43,13 +46,16 @@ class FieldsTest(TestCase):
         self.assertEquals(test1.test_datetime, self.TEST_DATETIME)
         self.assertEquals(test1.test_time, self.TEST_TIME)
         self.assertEquals(test1.test_decimal, self.TEST_DECIMAL)
+        self.assertEquals(test1.test_text, self.TEST_TEXT)
         #self.assertEquals(test1.test_list, self.TEST_LIST)
         
         test1.test_datetime = self.TEST_DATETIME2
+        test1.test_text = self.TEST_TEXT2
         test1.save()
         
         test1 = Test.objects.get(id='key1')
         self.assertEquals(test1.test_datetime, self.TEST_DATETIME2)
+        self.assertEquals(test1.test_text, self.TEST_TEXT2)
         
 class BasicFunctionalityTest(TestCase):
     

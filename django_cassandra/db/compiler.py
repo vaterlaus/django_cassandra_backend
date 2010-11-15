@@ -78,7 +78,9 @@ class CassandraQuery(NonrelQuery):
     
     def _convert_column_list_to_row(self, column_list, pk_column_name, pk_value):
         row = {}
-        row[pk_column_name] = pk_value
+        # FIXME: When we add code to allow primary keys that also are indexed,
+        # then we can change this to not set the primary key column in that case.
+        # row[pk_column_name] = pk_value
         for column in column_list:
             row[column.column.name] = column.column.value
         return row
@@ -88,10 +90,12 @@ class CassandraQuery(NonrelQuery):
 
         db_connection = self.connection.db_connection
         column_parent = ColumnParent(column_family=self.column_family)
-        slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count = CassandraQuery.MAX_FETCH_COUNT))
+        slice_predicate = SlicePredicate(slice_range=SliceRange(start='',
+            finish='', count=self.connection.max_column_count))
         
         if range_predicate._is_exact():
-            column_list = db_connection.client.get_slice(range_predicate.start, column_parent, slice_predicate, ConsistencyLevel.ONE)
+            column_list = db_connection.client.get_slice(range_predicate.start,
+                column_parent, slice_predicate, self.connection.read_consistency_level)
             if column_list:
                 row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
                 rows = [row]
@@ -112,9 +116,9 @@ class CassandraQuery(NonrelQuery):
             else:
                 key_end = ''
             
-            key_range = KeyRange(start_key = key_start, end_key = key_end, count = CassandraQuery.MAX_FETCH_COUNT)
+            key_range = KeyRange(start_key=key_start, end_key=key_end, count=self.connection.max_key_count)
             try:
-                key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, ConsistencyLevel.ONE)
+                key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
             except Exception, e:
                 raise e
             
@@ -133,7 +137,7 @@ class CassandraQuery(NonrelQuery):
             index_expressions.append(index_expression)
         else:
             # NOTE: These range queries don't work with the current version of cassandra
-            # that I'm using (0.7 beta1)
+            # that I'm using (0.7 beta3)
             # It looks like there are cassandra tickets to add support for this, but it's
             # unclear how soon it will be supported. We shouldn't hit this code for now,
             # though, because can_evaluate_efficiently was changed to disable range queries
@@ -152,9 +156,9 @@ class CassandraQuery(NonrelQuery):
         # Now make the call to cassandra to get the key slice
         db_connection = self.connection.db_connection
         column_parent = ColumnParent(column_family=self.column_family)
-        index_clause = IndexClause(index_expressions, '')
-        slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count = CassandraQuery.MAX_FETCH_COUNT))
-        key_slice = db_connection.client.get_indexed_slices(column_parent, index_clause, slice_predicate, ConsistencyLevel.ONE)
+        index_clause = IndexClause(index_expressions, '', self.connection.max_key_count)
+        slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count=self.connection.max_column_count))
+        key_slice = db_connection.client.get_indexed_slices(column_parent, index_clause, slice_predicate, self.connection.read_consistency_level)
         
         rows = self._convert_key_slice_to_rows(key_slice)
             
@@ -173,11 +177,11 @@ class CassandraQuery(NonrelQuery):
         # TODO: Could factor this code better
         db_connection = self.connection.db_connection
         column_parent = ColumnParent(column_family=self.column_family)
-        slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count = CassandraQuery.MAX_FETCH_COUNT))
-        #key_range = KeyRange(start_token = ' ', end_token = ' ', count = CassandraQuery.MAX_FETCH_COUNT)
-        key_range = KeyRange(start_token = '0', end_token = '0', count = 100)
-        #key_range = KeyRange(start_key=chr(1), end_key=chr(255)*16, count=CassandraQuery.MAX_FETCH_COUNT)
-        key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, ConsistencyLevel.ONE)
+        slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count=self.connection.max_column_count))
+        key_range = KeyRange(start_token = '0', end_token = '0', count=self.connection.max_key_count)
+        #end_key = u'\U0010ffff'.encode('utf-8')
+        #key_range = KeyRange(start_key='\x01', end_key=end_key, count=self.connection.max_key_count)
+        key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
         rows = self._convert_key_slice_to_rows(key_slice)
         return rows
     
@@ -226,9 +230,9 @@ class CassandraQuery(NonrelQuery):
         column_family = self.query.get_meta().db_table
         mutation_map = {}
         for item in results:
-            mutation_map[item[self.pk_column]] = {column_family: [Mutation(deletion=Deletion(clock=Clock(timestamp)))]}
+            mutation_map[item[self.pk_column]] = {column_family: [Mutation(deletion=Deletion(timestamp=timestamp))]}
         client = self.connection.db_connection.client
-        client.batch_mutate(mutation_map, ConsistencyLevel.ONE)
+        client.batch_mutate(mutation_map, self.connection.write_consistency_level)
         
     @safe_call
     def order_by(self, ordering):
@@ -291,9 +295,14 @@ class CassandraQuery(NonrelQuery):
 class SQLCompiler(NonrelCompiler):
     query_class = CassandraQuery
 
+    SPECIAL_NONE_VALUE = "\b"
+    
     # This gets called for each field type when you fetch() an entity.
     # db_type is the string that you used in the DatabaseCreation mapping
     def convert_value_from_db(self, db_type, value):
+        
+        if value == self.SPECIAL_NONE_VALUE:
+            return None
         
         if  db_type.startswith('ListField:'):
             db_sub_type = db_type.split(':', 1)[1]
@@ -309,6 +318,16 @@ class SQLCompiler(NonrelCompiler):
         elif db_type == 'time':
             dt = datetime.datetime.strptime(value, '%H:%M:%S.%f')
             value = dt.time()
+        elif db_type == 'bool':
+            value = (value != None) and (value.lower() == 'true')
+        elif db_type == 'int':
+            value = int(value)
+        elif db_type == 'long':
+            value = long(value)
+        elif db_type == 'float':
+            value = float(value)
+        #elif db_type == 'id':
+        #    value = unicode(value).decode('utf-8')
         elif db_type.startswith('decimal'):
             value = decimal.Decimal(value)
         elif isinstance(value, str):
@@ -321,6 +340,9 @@ class SQLCompiler(NonrelCompiler):
     # This gets called for each field type when you insert() an entity.
     # db_type is the string that you used in the DatabaseCreation mapping
     def convert_value_for_db(self, db_type, value):
+        if value is None:
+            return self.SPECIAL_NONE_VALUE
+        
         if db_type.startswith('ListField:'):
             db_sub_type = db_type.split(':', 1)[1]
             if isinstance(value, (list, tuple)) and len(value):
@@ -330,11 +352,19 @@ class SQLCompiler(NonrelCompiler):
             value = value.strftime('%Y-%m-%d %H:%M:%S.%f')
         elif db_type == 'time':
             value = value.strftime('%H:%M:%S.%f')
-        elif type(value) is str:
-            # always store unicode strings
-            value = value.decode('utf-8')
-        else:
+        elif db_type == 'bool':
+            value = str(value).lower()
+        elif (db_type == 'int') or (db_type == 'long') or (db_type == 'float'):
+            value = str(value)
+        elif db_type == 'id':
             value = unicode(value)
+        elif ((type(value) is not unicode) and (type(value) is not str)):
+            value = unicode(value)
+        
+        # always store strings as utf-8
+        if type(value) is unicode:
+            value = value.encode('utf-8')
+            
         return value
 
 # This handles both inserts and updates of individual entities
@@ -345,22 +375,41 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         pk_column = self.query.get_meta().pk.column
         if pk_column in data:
             key = data[pk_column]
-            del data[pk_column]
+            # FIXME: For now we leave the key data as a column too. This is
+            # suboptimal, since the data is duplicated, but there are a couple of cases
+            # where you need to keep the column. First, if you have a model with only
+            # a single field that's the primary key (admittedly a semi-pathological case,
+            # but I can imagine valid use cases where you have this), then it doesn't
+            # work if the column is removed, because then there are no columns and that's
+            # interpreted as a deleted row (i.e. the usual Cassandra tombstone issue).
+            # Second, if there's a secondary index configured for the primary key field
+            # (not particularly useful with the current Cassandra, but would be valid when
+            # you can do a range query on indexed column) then you'd want to keep the
+            # column. So for now, we just leave the column in there so these cases work.
+            # Eventually we can optimize this and remove the column where it makes sense.
+            #del data[pk_column]
         else:
-            key = uuid4()
+            key = str(uuid4())
+            # Insert the key as column data too
+            # FIXME. See the above comment. When the primary key handling is optimized,
+            # then we would not always add the key to the data here.
+            data[pk_column] = key
         
-        key = unicode(key)
+        #key = str(key)
         
         timestamp = get_next_timestamp()
         
         mutation_list = []
         for name, value in data.items():
-            mutation = Mutation(column_or_supercolumn=ColumnOrSuperColumn(column=Column(name=name, value=unicode(value), clock=Clock(timestamp))))
+            # FIXME: Do we need this check here? Or is the name always already a str instead of unicode.
+            if type(name) is unicode:
+                name = name.decode('utf-8')
+            mutation = Mutation(column_or_supercolumn=ColumnOrSuperColumn(column=Column(name=name, value=value, timestamp=timestamp)))
             mutation_list.append(mutation)
         
         client = self.connection.db_connection.client
         column_family = self.query.get_meta().db_table
-        client.batch_mutate({key: {column_family: mutation_list}}, ConsistencyLevel.ONE)
+        client.batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
         
         if return_id:
             return key
