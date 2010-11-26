@@ -70,6 +70,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
                     
         column_family_def = CfDef(keyspace=keyspace_name,
                                   name = opts.db_table,
+                                  comparator_type = "UTF8Type",
                                   column_metadata = column_metadata)
         client.system_add_column_family(column_family_def)
         return [], {}
