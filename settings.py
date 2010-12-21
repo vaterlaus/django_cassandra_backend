@@ -96,7 +96,7 @@ INSTALLED_APPS = (
     # Uncomment the next line to enable the admin:
     'django.contrib.admin',
     'django_cassandra_backend.tests',
-    'django_cassandra_backend.djangotoolbox'
+    #'django_cassandra_backend.djangotoolbox'
 )
 
 AUTHENTICATION_BACKENDS = (

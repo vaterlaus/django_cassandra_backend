@@ -48,14 +48,20 @@ the database settings in the settings.py file. Change the ENGINE value to be
 You also need to set the SUPPORTS_TRANSACTIONS setting to False, since Cassandra
 doesn't support transactions. You can set HOST and PORT to specify the host and
 port where the Cassandra daemon process is running. If these aren't specified
-then the backend uses default values of 'localhost' and 9160.
-In theory you can also set USER and PASSWORD if you're using authentication with
-Cassandra, but this hasn't been tested yet, so it may not work. You can also set
-a couple of optional Cassandra-specific settings in the database settings. Set the
+then the backend uses default values of 'localhost' and 9160.  You can also set
+USER and PASSWORD if you're using authentication with Cassandra. You can also set
+a few optional Cassandra-specific settings in the database settings. Set the
 CASSANDRA_REPLICATION_FACTOR and CASSANDRA_STRATEGY_CLASS settings to be the
 replication factor and strategy class value you want to use when the backend
 creates the keyspace during syncdb. The default values for these settings are
-1 and "org.apache.cassandra.locator.SimpleStrategy".
+1 and "org.apache.cassandra.locator.SimpleStrategy". You can also define
+CASSANDRA_READ_CONSISTENCY_LEVEL and CASSANDRA_WRITE_CONSISTENCY_LEVEL to be
+the values you want to use for the consistency level for read and write
+operations. If you want to use different consistency level values for
+different operations or different column families then it should work to
+use the Django multiple database support to define different database
+settings with different consistency levels and use the appropriate one,
+but I haven't tested this to verify that it works.
 
 Configure Cassandra as described in the Cassandra documentation.
 If want to be able to do range queries over primary keys then you need to set the
@@ -172,11 +178,3 @@ Known Issues
   daemon not running, a versioning mismatch between client and Cassandra
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
-- Currently the code is hard-coded to use a consistency level of ONE for all
-  operations. The simplest way I was planning on fixing this was to add
-  CASSANDRA_READ_CONSISTENCY_LEVEL and CASSANDRA_WRITE_CONSISTENCY_LEVEL
-  database settings that would be used for those values. If an application
-  needed to use different values of these things for different operations
-  that would be supported by having multiple database settings and using
-  the Django multiple database support. Another possibility would be to add a
-  way to override these values for different models.
