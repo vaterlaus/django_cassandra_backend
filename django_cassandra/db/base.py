@@ -46,21 +46,64 @@ class DatabaseValidation(NonrelDatabaseValidation):
 
 # TODO: Maybe move this somewhere else? db.utils.py maybe?
 class CassandraConnection(object):
-    def __init__(self, client, transport):
-        self.client = client
-        self.transport = transport
-    
+    def __init__(self, host, port, keyspace, user, password):
+        self.host = host
+        self.port = port
+        self.keyspace = keyspace
+        self.user = user
+        self.password = password
+        self.transport = None
+        self.client = None
+        self.keyspace_set = False
+        self.logged_in = False
+        
     def commit(self):
         pass
 
-    def open(self):
-        if self.transport:
-            self.transport.open()
+    def set_keyspace(self):
+        if not self.keyspace_set:
+            self.client.set_keyspace(self.keyspace)
+            self.keyspace_set = True
+    
+    def login(self):
+        # TODO: This user/password auth code hasn't been tested
+        if not self.logged_in:
+            if self.user:
+                credentials = {'username': user, 'password': password}
+                self.client.login(AuthenticationRequest(credentials))
+            self.logged_in = True
             
-    def close(self):
-        if self.transport:
-            self.transport.close()
+    def open(self, set_keyspace=False, login=False):
+        if self.transport == None:
+            # Create the client connection to the Cassandra daemon
+            socket = TSocket.TSocket(self.host, int(self.port))
+            transport = TTransport.TFramedTransport(TTransport.TBufferedTransport(socket))
+            protocol = TBinaryProtocol.TBinaryProtocolAccelerated(transport)
+            transport.open()
+            self.transport = transport
+            self.client = Cassandra.Client(protocol)
         
+        if set_keyspace:
+            self.set_keyspace()
+            
+        if login:
+            self.login()
+                
+    def close(self):
+        if self.transport != None:
+            self.transport.close()
+            self.transport = None
+            self.client = None
+            self.keyspace_set = False
+            self.logged_in = False
+            
+    def is_connected(self):
+        return self.transport != None
+    
+    def reopen(self):
+        self.close()
+        self.open(True, True)
+            
 class DatabaseWrapper(NonrelDatabaseWrapper):
     def __init__(self, *args, **kwds):
         super(DatabaseWrapper, self).__init__(*args, **kwds)
@@ -86,30 +129,64 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         if self.max_column_count is None:
             self.max_column_count = 1000
                     
-        # Get the host and port specified in the database backend settings.
-        # Default to the standard Cassandra settings.
-        host = self.settings_dict.get('HOST')
-        if not host or host == '':
-            host = 'localhost'
-        port = self.settings_dict.get('PORT')
-        if not port or port == '':
-            port = 9160
+        self._db_connection = None
+
+    def get_db_connection(self, set_keyspace=False, login=False):
+        if not self._db_connection:
+            # Get the host and port specified in the database backend settings.
+            # Default to the standard Cassandra settings.
+            host = self.settings_dict.get('HOST')
+            if not host or host == '':
+                host = 'localhost'
+                
+            port = self.settings_dict.get('PORT')
+            if not port or port == '':
+                port = 9160
+                
+            keyspace = self.settings_dict.get('NAME')
+            if keyspace == None:
+                keyspace = 'django'
+                
+            user = self.settings_dict.get('USER')
+            password = self.settings_dict.get('PASSWORD')
+            
+            # Create our connection wrapper
+            print "Creating Cassandra connection"
+            self._db_connection = CassandraConnection(host, port, keyspace, user, password)
         
-        # Create the client connection to the Cassandra daemon
-        socket = TSocket.TSocket(host, port)
-        transport = TTransport.TFramedTransport(TTransport.TBufferedTransport(socket))
-        protocol = TBinaryProtocol.TBinaryProtocolAccelerated(transport)
-        client = Cassandra.Client(protocol)
-
-        # Create our connection wrapper
-        self.db_connection = CassandraConnection(client, transport)
-        self.db_connection.open()
-
-        version = client.describe_version()
-        # FIXME: Should do some version check here to make sure that we're
-        # talking to a cassandra daemon that supports the operations we require
+        if not self._db_connection.is_connected():
+            self._db_connection.open(False, False)
+            
+            #version = client.describe_version()
+            # FIXME: Should do some version check here to make sure that we're
+            # talking to a cassandra daemon that supports the operations we require
+            
+        if set_keyspace:
+            try:
+                self._db_connection.set_keyspace()
+            except Exception, e:
+                replication_factor = self.settings_dict.get('CASSANDRA_REPLICATION_FACTOR')
+                if not replication_factor:
+                    replication_factor = 1
+                replication_strategy_class = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY')
+                if not replication_strategy_class:
+                    replication_strategy_class = 'org.apache.cassandra.locator.SimpleStrategy'
+                keyspace_def = KsDef(name=self._db_connection.keyspace,
+                                     strategy_class=replication_strategy_class,
+                                     replication_factor=replication_factor,
+                                     cf_defs=[])
+                self._db_connection.client.system_add_keyspace(keyspace_def)
+                self._db_connection.set_keyspace()
+    
+        if login:
+            try:
+                self._db_connection.login()
+            except Exception, e:
+                # FIXME: Better handling of auth error
+                raise e
         
-        # Set up the Cassandra keyspace
-        keyspace_name = self.settings_dict.get('NAME')
-        self.creation.init_keyspace(keyspace_name)
-
+        return self._db_connection
+    
+    @property
+    def db_connection(self):
+        return self.get_db_connection(True, True)

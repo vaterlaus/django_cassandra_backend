@@ -18,10 +18,8 @@ from django.db.backends import BaseDatabaseIntrospection
 class DatabaseIntrospection(NonrelDatabaseIntrospection):
     def get_table_list(self, cursor):
         "Returns a list of names of all tables that exist in the database."
-        client = self.connection.db_connection.client
-        settings_dict = self.connection.settings_dict
-        keyspace_name = settings_dict['NAME']
-        ks_def = client.describe_keyspace(keyspace_name)
+        db_connection = self.connection.db_connection
+        ks_def = db_connection.client.describe_keyspace(db_connection.keyspace)
         result = [cf_def.name for cf_def in ks_def.cf_defs]
         return result
     

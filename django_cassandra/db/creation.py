@@ -55,84 +55,37 @@ class DatabaseCreation(NonrelDatabaseCreation):
     
     def sql_create_model(self, model, style, known_models=set()):
         
-        client = self.connection.db_connection.client
-        keyspace_name = self.connection.settings_dict['NAME']
+        db_connection = self.connection.db_connection
+        keyspace = self.connection.settings_dict['NAME']
         
         opts = model._meta
         column_metadata = []
 
-        # Browsing through fields to find references
+        # Browsing through fields to find indexed fields
         for field in opts.local_fields:
             if field.db_index:
                 column_name = field.db_column if field.db_column else field.column
-                column_def = ColumnDef(name=unicode(column_name), validation_class='BytesType', index_type=IndexType.KEYS, index_name=unicode(column_name))
+                column_def = ColumnDef(name=str(column_name), validation_class='BytesType', index_type=IndexType.KEYS, index_name=str(column_name))
                 column_metadata.append(column_def)
                     
-        column_family_def = CfDef(keyspace=keyspace_name,
+        column_family_def = CfDef(keyspace=keyspace,
                                   name = opts.db_table,
                                   comparator_type = "UTF8Type",
                                   column_metadata = column_metadata)
-        client.system_add_column_family(column_family_def)
+        
+        db_connection.client.system_add_column_family(column_family_def)
+        
         return [], {}
 
-    def init_keyspace(self, keyspace_name):
-        """
-        Initialize the keyspace, whic may be either the normal keyspace or the
-        test keyspace. This involves creating the keyspace if it hasn't already
-        been created, setting that keyspace for the Cassandra connection, and
-        logging in to that keyspace if the USER/PASSWORD setting are specified.
-        """
-        
-        client = self.connection.db_connection.client
-        settings_dict = self.connection.settings_dict
-
-        if not keyspace_name:
-            # FIXME: throw an exception here
-            pass
-
-        try:
-            # Try to set the keyspace. In the case where we're running for the
-            # first time (i.e. syncdb) the keyspace will not exist yet, so if
-            # this fails we try to create the keyspace and then retry the set.
-            client.set_keyspace(keyspace_name)
-        except Exception, e:
-            # FIXME: This probably should be refactored so that we don't create the
-            # keyspace here. It's not ideal, especially in the case where we're
-            # running the unit tests against the test database/keyspace, because
-            # we create the normal keyspace here even though we're not going to
-            # use that keyspace.
-            # FIXME: Should maybe be more specific in terms of the exact exception
-            # type we catch here (i.e. figure out exactly what exception is thrown
-            # by the Thrift API).
-            replication_factor = settings_dict.get('CASSANDRA_REPLICATION_FACTOR')
-            if not replication_factor:
-                replication_factor = 1
-            replication_strategy_class = settings_dict.get('CASSANDRA_REPLICATION_STRATEGY')
-            if not replication_strategy_class:
-                replication_strategy_class = 'org.apache.cassandra.locator.SimpleStrategy'
-            keyspace_def = KsDef(name=keyspace_name,
-                                 strategy_class=replication_strategy_class,
-                                 replication_factor=replication_factor,
-                                 cf_defs=[])
-            client.system_add_keyspace(keyspace_def)
-            client.set_keyspace(keyspace_name)
-            
-        # TODO: This user/password auth code hasn't been tested
-        user = settings_dict.get('USER')
-        if user != None and user != '':
-            password = settings_dict.get('PASSWORD')
-            authentication_request = Cassandra.AuthenticationRequest({'username': user, 'password': password})
-            client.login(keyspace_name, authentication_request)
-    
     def drop_keyspace(self, keyspace_name, verbosity=1):
         """
         Drop the specified keyspace from the cluster.
         """
         
-        client = self.connection.db_connection.client
+        db_connection = self.connection.get_db_connection(False, False)
         
         try:
-            client.system_drop_keyspace(keyspace_name)
+            db_connection.client.system_drop_keyspace(keyspace_name)
         except Exception, e:
             # We want succeed without complaining if the test db doesn't
             # exist yet, so we just assume that any exception that's raised
@@ -166,9 +119,6 @@ class DatabaseCreation(NonrelDatabaseCreation):
         # would you ever not want to autoclobber when running the tests?
         self.drop_keyspace(test_keyspace_name, verbosity)
         
-        # Now create the new test keyspace
-        self.init_keyspace(test_keyspace_name)
-
         # Call syncdb to create the necessary tables/column families
         call_command('syncdb', verbosity=False, interactive=False, database=self.connection.alias)
     
@@ -189,15 +139,20 @@ class DatabaseCreation(NonrelDatabaseCreation):
         self.drop_keyspace(test_keyspace_name, verbosity)
         
     def flush_table(self, table_name):
-        client = self.connection.db_connection.client
         
+        db_connection = self.connection.db_connection
+
         # FIXME: Calling truncate here seems to corrupt the secondary indexes,
         # so for now the truncate call has been replaced with removing the
         # row one by one. When the truncate bug has been fixed in Cassandra
         # this should be switched back to use truncate.
-        # client.truncate(table_name)
+        # NOTE: This should be fixed as of the 0.7.0-rc2 build, so we should
+        # try this out again to see if it works now.
+        # UPDATE: Tried it with rc2 and it worked calling truncate but it was
+        # slower than using remove (at least for the unit tests), so for now
+        # I'm leaving it alone pending further investigation.
+        #db_connection.client.truncate(table_name)
         
-        db_connection = self.connection.db_connection
         column_parent = ColumnParent(column_family=table_name)
         slice_predicate = SlicePredicate(column_names=[])
         key_range = KeyRange(start_token = '0', end_token = '0', count = 1000)

@@ -32,6 +32,7 @@ from .predicate import *
 from uuid import uuid4
 from cassandra import Cassandra
 from cassandra.ttypes import *
+from thrift.transport.TTransport import TTransportException
 
 def safe_call(func):
     @wraps(func)
@@ -93,37 +94,44 @@ class CassandraQuery(NonrelQuery):
         slice_predicate = SlicePredicate(slice_range=SliceRange(start='',
             finish='', count=self.connection.max_column_count))
         
-        if range_predicate._is_exact():
-            column_list = db_connection.client.get_slice(range_predicate.start,
-                column_parent, slice_predicate, self.connection.read_consistency_level)
-            if column_list:
-                row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
-                rows = [row]
-            else:
-                rows = []
-        else:
-            if range_predicate.start != None:
-                key_start = range_predicate.start
-                if not range_predicate.start_inclusive:
-                    key_start = key_start + chr(1)
-            else:
-                key_start = ''
-             
-            if range_predicate.end != None:
-                key_end = range_predicate.end
-                if not range_predicate.end_inclusive:
-                    key_end = key_end[:-1] + chr(ord(key_end[-1])-1) + (chr(126) * 16)
-            else:
-                key_end = ''
-            
-            key_range = KeyRange(start_key=key_start, end_key=key_end, count=self.connection.max_key_count)
+        for attempt in (1,2):
             try:
-                key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
-            except Exception, e:
-                raise e
-            
-            rows = self._convert_key_slice_to_rows(key_slice)
-            
+                if range_predicate._is_exact():
+                    column_list = db_connection.client.get_slice(range_predicate.start,
+                        column_parent, slice_predicate, self.connection.read_consistency_level)
+                    if column_list:
+                        row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
+                        rows = [row]
+                    else:
+                        rows = []
+                else:
+                    if range_predicate.start != None:
+                        key_start = range_predicate.start
+                        if not range_predicate.start_inclusive:
+                            key_start = key_start + chr(1)
+                    else:
+                        key_start = ''
+                     
+                    if range_predicate.end != None:
+                        key_end = range_predicate.end
+                        if not range_predicate.end_inclusive:
+                            key_end = key_end[:-1] + chr(ord(key_end[-1])-1) + (chr(126) * 16)
+                    else:
+                        key_end = ''
+                    
+                    key_range = KeyRange(start_key=key_start, end_key=key_end,
+                        count=self.connection.max_key_count)
+                    key_slice = db_connection.client.get_range_slices(column_parent,
+                        slice_predicate, key_range, self.connection.read_consistency_level)
+                    
+                    rows = self._convert_key_slice_to_rows(key_slice)
+                break
+            except TTransportException, e:
+                # Only retry once, so if it's the second time through, propagate the exception
+                if attempt == 2:
+                    raise e
+                db_connection.reopen()
+                
         return rows
     
     def _get_rows_by_indexed_column(self, range_predicate):
@@ -158,9 +166,17 @@ class CassandraQuery(NonrelQuery):
         column_parent = ColumnParent(column_family=self.column_family)
         index_clause = IndexClause(index_expressions, '', self.connection.max_key_count)
         slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count=self.connection.max_column_count))
-        key_slice = db_connection.client.get_indexed_slices(column_parent, index_clause, slice_predicate, self.connection.read_consistency_level)
         
-        rows = self._convert_key_slice_to_rows(key_slice)
+        for attempt in (1,2):
+            try:
+                key_slice = db_connection.client.get_indexed_slices(column_parent, index_clause, slice_predicate, self.connection.read_consistency_level)
+                rows = self._convert_key_slice_to_rows(key_slice)
+                break
+            except TTransportException, e:
+                # Only retry once, so if it's the second time through, propagate the exception
+                if attempt == 2:
+                    raise e
+                db_connection.reopen()
             
         return rows
     
@@ -181,8 +197,16 @@ class CassandraQuery(NonrelQuery):
         key_range = KeyRange(start_token = '0', end_token = '0', count=self.connection.max_key_count)
         #end_key = u'\U0010ffff'.encode('utf-8')
         #key_range = KeyRange(start_key='\x01', end_key=end_key, count=self.connection.max_key_count)
-        key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
-        rows = self._convert_key_slice_to_rows(key_slice)
+        for attempt in (1,2):
+            try:
+                key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
+                rows = self._convert_key_slice_to_rows(key_slice)
+            except Exception, e:
+                # Only retry once, so if it's the second time through, propagate the exception
+                if attempt == 2:
+                    raise e
+                db_connection.reopen()
+                
         return rows
     
     def _get_query_results(self):
@@ -231,9 +255,16 @@ class CassandraQuery(NonrelQuery):
         mutation_map = {}
         for item in results:
             mutation_map[item[self.pk_column]] = {column_family: [Mutation(deletion=Deletion(timestamp=timestamp))]}
-        client = self.connection.db_connection.client
-        client.batch_mutate(mutation_map, self.connection.write_consistency_level)
-        
+        db_connection = self.connection.db_connection
+        for attempt in (1,2):
+            try:
+                db_connection.client.batch_mutate(mutation_map, self.connection.write_consistency_level)
+            except TTransportException, e:
+                # Only retry once, so if it's the second time through, propagate the exception
+                if attempt == 2:
+                    raise e
+                db_connection.reopen()
+
     @safe_call
     def order_by(self, ordering):
        self.ordering_spec = []
@@ -407,10 +438,16 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
             mutation = Mutation(column_or_supercolumn=ColumnOrSuperColumn(column=Column(name=name, value=value, timestamp=timestamp)))
             mutation_list.append(mutation)
         
-        client = self.connection.db_connection.client
+        db_connection = self.connection.db_connection
         column_family = self.query.get_meta().db_table
-        client.batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
-        
+        for attempt in (1,2):
+            try:
+                db_connection.client.batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
+            except TTransportException, e:
+                # Only retry once, so if it's the second time through, propagate the exception
+                if attempt == 2:
+                    raise e
+                db_connection.reopen()
         if return_id:
             return key
 
