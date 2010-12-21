@@ -69,7 +69,7 @@ class CassandraConnection(object):
         # TODO: This user/password auth code hasn't been tested
         if not self.logged_in:
             if self.user:
-                credentials = {'username': user, 'password': password}
+                credentials = {'username': self.user, 'password': self.password}
                 self.client.login(AuthenticationRequest(credentials))
             self.logged_in = True
             
@@ -82,12 +82,12 @@ class CassandraConnection(object):
             transport.open()
             self.transport = transport
             self.client = Cassandra.Client(protocol)
-        
-        if set_keyspace:
-            self.set_keyspace()
             
         if login:
             self.login()
+        
+        if set_keyspace:
+            self.set_keyspace()
                 
     def close(self):
         if self.transport != None:
@@ -151,7 +151,6 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             password = self.settings_dict.get('PASSWORD')
             
             # Create our connection wrapper
-            print "Creating Cassandra connection"
             self._db_connection = CassandraConnection(host, port, keyspace, user, password)
         
         if not self._db_connection.is_connected():
@@ -161,6 +160,13 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             # FIXME: Should do some version check here to make sure that we're
             # talking to a cassandra daemon that supports the operations we require
             
+        if login:
+            try:
+                self._db_connection.login()
+            except Exception, e:
+                # FIXME: Better handling of auth error
+                raise e
+        
         if set_keyspace:
             try:
                 self._db_connection.set_keyspace()
@@ -178,13 +184,6 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
                 self._db_connection.client.system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
     
-        if login:
-            try:
-                self._db_connection.login()
-            except Exception, e:
-                # FIXME: Better handling of auth error
-                raise e
-        
         return self._db_connection
     
     @property
