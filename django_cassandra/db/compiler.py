@@ -201,6 +201,7 @@ class CassandraQuery(NonrelQuery):
             try:
                 key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
                 rows = self._convert_key_slice_to_rows(key_slice)
+                break
             except Exception, e:
                 # Only retry once, so if it's the second time through, propagate the exception
                 if attempt == 2:
@@ -259,6 +260,7 @@ class CassandraQuery(NonrelQuery):
         for attempt in (1,2):
             try:
                 db_connection.client.batch_mutate(mutation_map, self.connection.write_consistency_level)
+                break
             except TTransportException, e:
                 # Only retry once, so if it's the second time through, propagate the exception
                 if attempt == 2:
@@ -389,7 +391,7 @@ class SQLCompiler(NonrelCompiler):
             value = str(value)
         elif db_type == 'id':
             value = unicode(value)
-        elif ((type(value) is not unicode) and (type(value) is not str)):
+        elif ((type(value) is not list) and (type(value) is not unicode) and (type(value) is not str)):
             value = unicode(value)
         
         # always store strings as utf-8
@@ -443,6 +445,7 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         for attempt in (1,2):
             try:
                 db_connection.client.batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
+                break
             except TTransportException, e:
                 # Only retry once, so if it's the second time through, propagate the exception
                 if attempt == 2:

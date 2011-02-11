@@ -16,7 +16,7 @@ The backend requires the 0.7 version of Cassandra. 0.7 has several features
 (e.g. programmatic creation/deletion of keyspaces & column families, secondary index
 support) that are useful for the Django database backend, so I targeted that
 instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
-so the two version are incompatible. I'm using the beta3 version of 0.7. That's
+so the two version are incompatible. I'm using the final release of 0.7.0. That's
 the only version I've tested against, so no promises if you try it with a
 different version.
 
@@ -32,7 +32,9 @@ The backend also requires the Django-nonrel fork of Django and djangotoolbox.
 Both are available here: <http://www.allbuttonspressed.com/projects/django-nonrel>.
 I installed the Django-nonrel version of Django globally in site-packages and
 copied djangotoolbox into the directory where I'm testing the Cassandra backend,
-but there are probably other (better?) ways to install those things.
+but there are probably other (better) ways to install those things. I'm using
+the current (as of 2/11/2011) version of both packages. The Django-nonrel is
+based on the 1.3 beta 1 release of Django and the version of djangotoolbox is 0.9.2.
 
 You also need to generate the Python Thrift API code as described in the Cassandra
 documentation and copy the generated "cassandra" directory (from Cassandra's
@@ -178,3 +180,11 @@ Known Issues
   daemon not running, a versioning mismatch between client and Cassandra
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
+
+Changes For 0.1.1
+=================
+- fixed some bugs in the cassandra reconnection logic where it was always
+  retrying the operation even when it succeeded the first time.
+- fixed a nasty bug with deleting instances where it would delete all
+  instances whose key was a substring of the key of the instance being deleted.
+
