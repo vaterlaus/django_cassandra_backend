@@ -42,20 +42,20 @@ class FieldsTest(TestCase):
     
     def test_fields(self):
         test1 = Test.objects.get(id='key1')
-        self.assertEquals(test1.test_date, self.TEST_DATE)
-        self.assertEquals(test1.test_datetime, self.TEST_DATETIME)
-        self.assertEquals(test1.test_time, self.TEST_TIME)
-        self.assertEquals(test1.test_decimal, self.TEST_DECIMAL)
-        self.assertEquals(test1.test_text, self.TEST_TEXT)
-        #self.assertEquals(test1.test_list, self.TEST_LIST)
+        self.assertEqual(test1.test_date, self.TEST_DATE)
+        self.assertEqual(test1.test_datetime, self.TEST_DATETIME)
+        self.assertEqual(test1.test_time, self.TEST_TIME)
+        self.assertEqual(test1.test_decimal, self.TEST_DECIMAL)
+        self.assertEqual(test1.test_text, self.TEST_TEXT)
+        #self.assertEqual(test1.test_list, self.TEST_LIST)
         
         test1.test_datetime = self.TEST_DATETIME2
         test1.test_text = self.TEST_TEXT2
         test1.save()
         
         test1 = Test.objects.get(id='key1')
-        self.assertEquals(test1.test_datetime, self.TEST_DATETIME2)
-        self.assertEquals(test1.test_text, self.TEST_TEXT2)
+        self.assertEqual(test1.test_datetime, self.TEST_DATETIME2)
+        self.assertEqual(test1.test_text, self.TEST_TEXT2)
         
 class BasicFunctionalityTest(TestCase):
     
@@ -101,7 +101,7 @@ class BasicFunctionalityTest(TestCase):
             index += 1
 
         # There should have been exactly 2 slices created
-        self.assertEquals(index, 2)
+        self.assertEqual(index, 2)
         
         host_query_set = Host.objects.all()
         index = 0
@@ -110,7 +110,7 @@ class BasicFunctionalityTest(TestCase):
             index += 1
 
         # There should have been exactly 2 slices created
-        self.assertEquals(index, self.HOST_COUNT)
+        self.assertEqual(index, self.HOST_COUNT)
 
     def test_update(self):
         s = Slice.objects.get(id='key0')
@@ -120,21 +120,21 @@ class BasicFunctionalityTest(TestCase):
         #time.sleep(5)
         s1 = Slice.objects.get(id='key0')
         #s2 = Slice.objects.get(id='key0')
-        self.assertEquals(s1.name, 'foobar')
-        #self.assertEquals(s2.name, 'foobar')
+        self.assertEqual(s1.name, 'foobar')
+        #self.assertEqual(s2.name, 'foobar')
     
     def test_delete(self):
         host = Host.objects.get(id='key1')
         host.delete()
         hqs = Host.objects.filter(id='key1')
         count = hqs.count()
-        self.assertEquals(count,0)
+        self.assertEqual(count,0)
         
     def test_default_id(self):
         s = Slice(name='slice2')
         s.save()
         s2 = Slice.objects.get(name='slice2')
-        self.assertEquals(s2.name, 'slice2')
+        self.assertEqual(s2.name, 'slice2')
         
 SLICE_DATA_1 = ('key1', 'PCI')
 SLICE_DATA_2 = ('key2', 'Eng1')
@@ -170,6 +170,7 @@ def create_hosts(host_data_list):
             for tag in tag_list:
                 name, value = tag
                 t = Tag(name=name,value=value,host=h)
+                t.save()
     
 class QueryTest(TestCase):
 
@@ -179,10 +180,10 @@ class QueryTest(TestCase):
         
     def check_host_data(self, host, data):
         expected_id, expected_mac, expected_ip, expected_slice, expected_tag_list = data
-        self.assertEquals(host.id, expected_id)
-        self.assertEquals(host.mac, expected_mac)
-        self.assertEquals(host.ip, expected_ip)
-        self.assertEquals(host.slice.id, expected_slice)
+        self.assertEqual(host.id, expected_id)
+        self.assertEqual(host.mac, expected_mac)
+        self.assertEqual(host.ip, expected_ip)
+        self.assertEqual(host.slice.id, expected_slice)
         # TODO: For now we don't check the tag list
         
     def test_pk_query(self):
@@ -191,13 +192,13 @@ class QueryTest(TestCase):
     
         hqs = Host.objects.filter(id='key6')
         count = hqs.count()
-        self.assertEquals(count, 1)
+        self.assertEqual(count, 1)
         h6 = hqs[0]
         self.check_host_data(h6, HOST_DATA_6)
     
         hqs = Host.objects.filter(id__gt='key4')
         count = hqs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         h5, h6, h7 = hqs[:]
         self.check_host_data(h5, HOST_DATA_5)
         self.check_host_data(h6, HOST_DATA_6)
@@ -205,7 +206,7 @@ class QueryTest(TestCase):
         
         hqs = Host.objects.filter(id__lte='key3')
         count = hqs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         h1, h2, h3 = hqs[:]
         self.check_host_data(h1, HOST_DATA_1)
         self.check_host_data(h2, HOST_DATA_2)
@@ -213,7 +214,7 @@ class QueryTest(TestCase):
         
         hqs = Host.objects.filter(id__gte='key3', id__lt='key7')
         count = hqs.count()
-        self.assertEquals(count, 4)
+        self.assertEqual(count, 4)
         h3, h4, h5, h6 = hqs[:]
         self.check_host_data(h3, HOST_DATA_3)
         self.check_host_data(h4, HOST_DATA_4)
@@ -231,16 +232,38 @@ class QueryTest(TestCase):
     def test_complex_query(self):
         hqs = Host.objects.filter(Q(id='key1') | Q(id='key3') | Q(id='key4')).order_by('id')
         count = hqs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         h1, h3, h4 = hqs[:]
         self.check_host_data(h1, HOST_DATA_1)
         self.check_host_data(h3, HOST_DATA_3)
         self.check_host_data(h4, HOST_DATA_4)
-        
+
         s1 = Slice.objects.get(id='key1')
+        
+        hqs = Host.objects.filter(ip__startswith='10.', slice=s1)
+        count = hqs.count()
+        self.assertEqual(count, 3)
+        h1, h4, h5 = hqs[:]
+        self.check_host_data(h1, HOST_DATA_1)
+        self.check_host_data(h4, HOST_DATA_4)
+        self.check_host_data(h5, HOST_DATA_5)
+
+        hqs = Host.objects.filter(ip='10.0.0.6', slice=s1)
+        count = hqs.count()
+        self.assertEqual(count, 1)
+        h4 = hqs[0]
+        self.check_host_data(h4, HOST_DATA_4)
+
+        tqs = Tag.objects.filter(name='foo3', value='bar3')
+        self.assertEqual(tqs.count(), 1)
+        t = tqs[0]
+        self.assertEqual(t.name, 'foo3')
+        self.assertEqual(t.value, 'bar3')
+        self.assertEqual(t.host_id, 'key1')
+        
         hqs = Host.objects.filter((Q(ip__startswith='10.0') & Q(slice=s1)) | Q(mac__startswith='ff')).order_by('id')
         count = hqs.count()
-        self.assertEquals(count, 5)
+        self.assertEqual(count, 5)
         h1, h2, h3, h4, h5 = hqs[:]
         self.check_host_data(h1, HOST_DATA_1)
         self.check_host_data(h2, HOST_DATA_2)
@@ -251,7 +274,7 @@ class QueryTest(TestCase):
     def test_exclude_query(self):
         hqs = Host.objects.exclude(ip__startswith="10")
         count = hqs.count()
-        self.assertEquals(count,3)
+        self.assertEqual(count,3)
         h2, h3, h7 = hqs[:]
         self.check_host_data(h2, HOST_DATA_2)
         self.check_host_data(h3, HOST_DATA_3)
@@ -260,10 +283,10 @@ class QueryTest(TestCase):
     def test_count(self):
         
         count = Host.objects.count()
-        self.assertEquals(count, 7)
+        self.assertEqual(count, 7)
         
         count = Host.objects.all().count()
-        self.assertEquals(count, 7)
+        self.assertEqual(count, 7)
         
         slice1 = Slice.objects.get(id='key1')
         qs = Host.objects.filter(slice=slice1)
@@ -272,81 +295,81 @@ class QueryTest(TestCase):
         #    h1,h4,h5,h7 = qs[:]
         #else:
         #    h1,h4,h5,h7,h = qs[:]
-        self.assertEquals(count, 4)
+        self.assertEqual(count, 4)
 
         qs = Slice.objects.filter(name__startswith='P')
         count = qs.count()
-        self.assertEquals(count, 1)
+        self.assertEqual(count, 1)
         
         qs = Host.objects.filter(ip__startswith='10').order_by('slice_id')
         count = qs.count()
-        self.assertEquals(count, 4)
+        self.assertEqual(count, 4)
     
     def test_query_set_slice(self):
         hqs = Host.objects.all()[2:6]
         count = hqs.count()
         h3, h4, h5, h6 = hqs[:]
-        self.assertEquals(h3.id, 'key3')
-        self.assertEquals(h4.id, 'key4')
-        self.assertEquals(h5.id, 'key5')
-        self.assertEquals(h6.id, 'key6')
+        self.assertEqual(h3.id, 'key3')
+        self.assertEqual(h4.id, 'key4')
+        self.assertEqual(h5.id, 'key5')
+        self.assertEqual(h6.id, 'key6')
         
     def test_order_by(self):
         # Test ascending order of all of the hosts
         qs = Host.objects.all().order_by('ip')
         h1, h2, h3, h4, h5, h6, h7 = qs[:]
-        self.assertEquals(h1.id, 'key1')
-        self.assertEquals(h2.id, 'key5')
-        self.assertEquals(h3.id, 'key4')
-        self.assertEquals(h4.id, 'key6')
-        self.assertEquals(h5.id, 'key3')
-        self.assertEquals(h6.id, 'key7')
-        self.assertEquals(h7.id, 'key2')
+        self.assertEqual(h1.id, 'key1')
+        self.assertEqual(h2.id, 'key5')
+        self.assertEqual(h3.id, 'key4')
+        self.assertEqual(h4.id, 'key6')
+        self.assertEqual(h5.id, 'key3')
+        self.assertEqual(h6.id, 'key7')
+        self.assertEqual(h7.id, 'key2')
         
         # Test descending order of all of the hosts
         qs = Host.objects.all().order_by('-ip')
         h1, h2, h3, h4, h5, h6, h7 = qs[:]
-        self.assertEquals(h1.id, 'key2')
-        self.assertEquals(h2.id, 'key7')
-        self.assertEquals(h3.id, 'key3')
-        self.assertEquals(h4.id, 'key6')
-        self.assertEquals(h5.id, 'key4')
-        self.assertEquals(h6.id, 'key5')
-        self.assertEquals(h7.id, 'key1')
+        self.assertEqual(h1.id, 'key2')
+        self.assertEqual(h2.id, 'key7')
+        self.assertEqual(h3.id, 'key3')
+        self.assertEqual(h4.id, 'key6')
+        self.assertEqual(h5.id, 'key4')
+        self.assertEqual(h6.id, 'key5')
+        self.assertEqual(h7.id, 'key1')
 
         # Test multiple ordering criteria
         qs = Host.objects.all().order_by('slice_id', 'ip')
         h1, h2, h3, h4, h5, h6, h7 = qs[:]
-        self.assertEquals(h1.id, 'key1')
-        self.assertEquals(h2.id, 'key5')
-        self.assertEquals(h3.id, 'key4')
-        self.assertEquals(h4.id, 'key7')
-        self.assertEquals(h5.id, 'key3')
-        self.assertEquals(h6.id, 'key2')
-        self.assertEquals(h7.id, 'key6')
+        self.assertEqual(h1.id, 'key1')
+        self.assertEqual(h2.id, 'key5')
+        self.assertEqual(h3.id, 'key4')
+        self.assertEqual(h4.id, 'key7')
+        self.assertEqual(h5.id, 'key3')
+        self.assertEqual(h6.id, 'key2')
+        self.assertEqual(h7.id, 'key6')
 
         # Test multiple ordering criteria
         qs = Host.objects.all().order_by('-slice_id', 'ip')
         h1, h2, h3, h4, h5, h6, h7 = qs[:]
-        self.assertEquals(h1.id, 'key6')
-        self.assertEquals(h2.id, 'key3')
-        self.assertEquals(h3.id, 'key2')
-        self.assertEquals(h4.id, 'key1')
-        self.assertEquals(h5.id, 'key5')
-        self.assertEquals(h6.id, 'key4')
-        self.assertEquals(h7.id, 'key7')
+        self.assertEqual(h1.id, 'key6')
+        self.assertEqual(h2.id, 'key3')
+        self.assertEqual(h3.id, 'key2')
+        self.assertEqual(h4.id, 'key1')
+        self.assertEqual(h5.id, 'key5')
+        self.assertEqual(h6.id, 'key4')
+        self.assertEqual(h7.id, 'key7')
 
         # Currently the nonrel code doesn't handle ordering that spans tables/column families
         #=======================================================================
         # qs = Host.objects.all().order_by('slice__name', 'id')
         # h2, h3, h6, h1, h5, h4, h7 = qs[:]
-        # self.assertEquals(h2.id, 'key2')
-        # self.assertEquals(h3.id, 'key3')
-        # self.assertEquals(h6.id, 'key6')
-        # self.assertEquals(h1.id, 'key1')
-        # self.assertEquals(h5.id, 'key5')
-        # self.assertEquals(h4.id, 'key4')
-        # self.assertEquals(h7.id, 'key7')
+        # self.assertEqual(h2.id, 'key2')
+        # self.assertEqual(h3.id, 'key3')
+        # self.assertEqual(h6.id, 'key6')
+        # self.assertEqual(h1.id, 'key1')
+        # self.assertEqual(h5.id, 'key5')
+        # self.assertEqual(h4.id, 'key4')
+        # self.assertEqual(h7.id, 'key7')
         #=======================================================================
 
 
@@ -359,111 +382,111 @@ class OperationTest(TestCase):
     def test_range_ops(self):
         qs = Slice.objects.filter(name__gt='PCI')
         count = qs.count()
-        self.assertEquals(count, 5)
+        self.assertEqual(count, 5)
         s4,s5,s7,s8,s9 = qs[:]
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s5.id,'key5')
-        self.assertEquals(s7.id,'key7')
-        self.assertEquals(s8.id,'key8')
-        self.assertEquals(s9.id,'key9')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s5.id,'key5')
+        self.assertEqual(s7.id,'key7')
+        self.assertEqual(s8.id,'key8')
+        self.assertEqual(s9.id,'key9')
         
         qs = Slice.objects.filter(name__gte='bluf',name__lte='bluf')
         count = qs.count()
-        self.assertEquals(count, 1)
+        self.assertEqual(count, 1)
         s5 = qs[0]
-        self.assertEquals(s5.id, 'key5')
+        self.assertEqual(s5.id, 'key5')
         
         qs = Slice.objects.filter(name__gt='blue', name__lte='bluf')
         count = qs.count()
-        self.assertEquals(count, 1)
+        self.assertEqual(count, 1)
         s5 = qs[0]
-        self.assertEquals(s5.id, 'key5')
+        self.assertEqual(s5.id, 'key5')
         
         qs = Slice.objects.filter(name__exact='blue')
         count = qs.count()
-        self.assertEquals(count, 1)
+        self.assertEqual(count, 1)
         s4 = qs[0]
-        self.assertEquals(s4.id, 'key4')
+        self.assertEqual(s4.id, 'key4')
 
     def test_other_ops(self):
         
         qs = Slice.objects.filter(id__in=['key1','key4','key6','key9'])
         count = qs.count()
-        self.assertEquals(count, 4)
+        self.assertEqual(count, 4)
         s1,s4,s6,s9 = qs[:]
-        self.assertEquals(s1.id,'key1')
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s6.id,'key6')
-        self.assertEquals(s9.id,'key9')
+        self.assertEqual(s1.id,'key1')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s6.id,'key6')
+        self.assertEqual(s9.id,'key9')
         
         qs = Slice.objects.filter(name__startswith='bl')
         count = qs.count()
-        self.assertEquals(count, 2)
+        self.assertEqual(count, 2)
         s4,s5 = qs[:]
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s5.id,'key5')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s5.id,'key5')
         
         qs = Slice.objects.filter(name__endswith='E')
         count = qs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         s6,s7,s8 = qs[:]
-        self.assertEquals(s6.id,'key6')
-        self.assertEquals(s7.id,'key7')
-        self.assertEquals(s8.id,'key8')
+        self.assertEqual(s6.id,'key6')
+        self.assertEqual(s7.id,'key7')
+        self.assertEqual(s8.id,'key8')
         
         qs = Slice.objects.filter(name__contains='NC')
         count = qs.count()
-        self.assertEquals(count, 2)
+        self.assertEqual(count, 2)
         s7,s8 = qs[:]
-        self.assertEquals(s7.id,'key7')
-        self.assertEquals(s8.id,'key8')
+        self.assertEqual(s7.id,'key7')
+        self.assertEqual(s8.id,'key8')
 
         qs = Slice.objects.filter(name__istartswith='b')
         count = qs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         s4,s5,s6 = qs[:]
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s5.id,'key5')
-        self.assertEquals(s6.id,'key6')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s5.id,'key5')
+        self.assertEqual(s6.id,'key6')
 
         qs = Slice.objects.filter(name__istartswith='B')
         count = qs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         s4,s5,s6 = qs[:]
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s5.id,'key5')
-        self.assertEquals(s6.id,'key6')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s5.id,'key5')
+        self.assertEqual(s6.id,'key6')
 
         qs = Slice.objects.filter(name__iendswith='e')
         count = qs.count()
-        self.assertEquals(count, 5)
+        self.assertEqual(count, 5)
         s3,s4,s6,s7,s8 = qs[:]
-        self.assertEquals(s3.id,'key3')
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s6.id,'key6')
-        self.assertEquals(s7.id,'key7')
-        self.assertEquals(s8.id,'key8')
+        self.assertEqual(s3.id,'key3')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s6.id,'key6')
+        self.assertEqual(s7.id,'key7')
+        self.assertEqual(s8.id,'key8')
 
         qs = Slice.objects.filter(name__icontains='nc')
         count = qs.count()
-        self.assertEquals(count, 4)
+        self.assertEqual(count, 4)
         s3,s7,s8,s9 = qs[:]
-        self.assertEquals(s3.id,'key3')
-        self.assertEquals(s7.id,'key7')
-        self.assertEquals(s8.id,'key8')
-        self.assertEquals(s9.id,'key9')
+        self.assertEqual(s3.id,'key3')
+        self.assertEqual(s7.id,'key7')
+        self.assertEqual(s8.id,'key8')
+        self.assertEqual(s9.id,'key9')
 
         qs = Slice.objects.filter(name__regex='[PEZ].*')
         count = qs.count()
-        self.assertEquals(count, 3)
+        self.assertEqual(count, 3)
         s1,s2,s7 = qs[:]
-        self.assertEquals(s1.id,'key1')
-        self.assertEquals(s2.id,'key2')
-        self.assertEquals(s7.id,'key7')
+        self.assertEqual(s1.id,'key1')
+        self.assertEqual(s2.id,'key2')
+        self.assertEqual(s7.id,'key7')
 
         qs = Slice.objects.filter(name__iregex='bl.*e')
         count = qs.count()
-        self.assertEquals(count, 2)
+        self.assertEqual(count, 2)
         s4,s6 = qs[:]
-        self.assertEquals(s4.id,'key4')
-        self.assertEquals(s6.id,'key6')
+        self.assertEqual(s4.id,'key4')
+        self.assertEqual(s6.id,'key6')

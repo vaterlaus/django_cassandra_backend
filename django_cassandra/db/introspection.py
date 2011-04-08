@@ -19,7 +19,7 @@ class DatabaseIntrospection(NonrelDatabaseIntrospection):
     def get_table_list(self, cursor):
         "Returns a list of names of all tables that exist in the database."
         db_connection = self.connection.db_connection
-        ks_def = db_connection.client.describe_keyspace(db_connection.keyspace)
+        ks_def = db_connection.get_client().describe_keyspace(db_connection.keyspace)
         result = [cf_def.name for cf_def in ks_def.cf_defs]
         return result
     

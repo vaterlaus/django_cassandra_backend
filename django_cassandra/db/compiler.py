@@ -97,7 +97,7 @@ class CassandraQuery(NonrelQuery):
         for attempt in (1,2):
             try:
                 if range_predicate._is_exact():
-                    column_list = db_connection.client.get_slice(range_predicate.start,
+                    column_list = db_connection.get_client().get_slice(range_predicate.start,
                         column_parent, slice_predicate, self.connection.read_consistency_level)
                     if column_list:
                         row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
@@ -121,7 +121,7 @@ class CassandraQuery(NonrelQuery):
                     
                     key_range = KeyRange(start_key=key_start, end_key=key_end,
                         count=self.connection.max_key_count)
-                    key_slice = db_connection.client.get_range_slices(column_parent,
+                    key_slice = db_connection.get_client().get_range_slices(column_parent,
                         slice_predicate, key_range, self.connection.read_consistency_level)
                     
                     rows = self._convert_key_slice_to_rows(key_slice)
@@ -334,7 +334,7 @@ class SQLCompiler(NonrelCompiler):
     # db_type is the string that you used in the DatabaseCreation mapping
     def convert_value_from_db(self, db_type, value):
         
-        if value == self.SPECIAL_NONE_VALUE:
+        if value == self.SPECIAL_NONE_VALUE or value is None:
             return None
         
         if  db_type.startswith('ListField:'):
@@ -352,7 +352,7 @@ class SQLCompiler(NonrelCompiler):
             dt = datetime.datetime.strptime(value, '%H:%M:%S.%f')
             value = dt.time()
         elif db_type == 'bool':
-            value = (value != None) and (value.lower() == 'true')
+            value = value.lower() == 'true'
         elif db_type == 'int':
             value = int(value)
         elif db_type == 'long':

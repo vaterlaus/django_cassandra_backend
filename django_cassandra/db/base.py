@@ -62,16 +62,36 @@ class CassandraConnection(object):
 
     def set_keyspace(self):
         if not self.keyspace_set:
-            self.client.set_keyspace(self.keyspace)
-            self.keyspace_set = True
+            try:
+                if self.client:
+                    self.client.set_keyspace(self.keyspace)
+                    self.keyspace_set = True
+            except Exception, e:
+                # In this case we won't have set keyspace_set to true, so we'll throw the
+                # exception below where it also handles the case that self.client
+                # is not valid yet.
+                pass
+            if not self.keyspace_set:
+                raise DatabaseError('Error setting keyspace: %s; %s' % (self.keyspace, str(e)))
     
     def login(self):
         # TODO: This user/password auth code hasn't been tested
         if not self.logged_in:
             if self.user:
-                credentials = {'username': self.user, 'password': self.password}
-                self.client.login(AuthenticationRequest(credentials))
-            self.logged_in = True
+                try:
+                    if self.client:
+                        credentials = {'username': self.user, 'password': self.password}
+                        self.client.login(AuthenticationRequest(credentials))
+                        self.logged_in = True
+                except Exception, e:
+                    # In this case we won't have set logged_in to true, so we'll throw the
+                    # exception below where it also handles the case that self.client
+                    # is not valid yet.
+                    pass
+                if not self.logged_in:
+                    raise DatabaseError('Error logging in to keyspace: %s; %s' % (self.keyspace, str(e)))
+            else:
+                self.logged_in = True
             
     def open(self, set_keyspace=False, login=False):
         if self.transport == None:
@@ -100,6 +120,11 @@ class CassandraConnection(object):
     def is_connected(self):
         return self.transport != None
     
+    def get_client(self):
+        if self.client == None:
+            self.open(True, True)
+        return self.client
+    
     def reopen(self):
         self.close()
         self.open(True, True)
@@ -116,19 +141,12 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         self.validation = DatabaseValidation(self)
         self.introspection = DatabaseIntrospection(self)
 
-        self.read_consistency_level = self.settings_dict.get('CASSANDRA_READ_CONSISTENCY_LEVEL')
-        if self.read_consistency_level is None:
-            self.read_consistency_level = ConsistencyLevel.ONE
-        self.write_consistency_level = self.settings_dict.get('CASSANDRA_WRITE_CONSISTENCY_LEVEL')
-        if self.write_consistency_level is None:
-            self.write_consistency_level = ConsistencyLevel.ONE
-        self.max_key_count = self.settings_dict.get('CASSANDRA_MAX_KEY_COUNT')
-        if self.max_key_count is None:
-            self.max_key_count = 10000
-        self.max_column_count = self.settings_dict.get('CASSANDRA_MAX_COLUMN_COUNT')
-        if self.max_column_count is None:
-            self.max_column_count = 1000
-                    
+        self.read_consistency_level = self.settings_dict.get('CASSANDRA_READ_CONSISTENCY_LEVEL', ConsistencyLevel.ONE)
+        self.write_consistency_level = self.settings_dict.get('CASSANDRA_WRITE_CONSISTENCY_LEVEL', ConsistencyLevel.ONE)
+        self.max_key_count = self.settings_dict.get('CASSANDRA_MAX_KEY_COUNT', 10000)
+        self.max_column_count = self.settings_dict.get('CASSANDRA_MAX_COLUMN_COUNT', 1000)
+        self.column_family_def_defaults = self.settings_dict.get('CASSANDRA_COLUMN_FAMILY_DEF_DEFAULT_SETTINGS', {})
+
         self._db_connection = None
 
     def get_db_connection(self, set_keyspace=False, login=False):
@@ -161,11 +179,7 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             # talking to a cassandra daemon that supports the operations we require
             
         if login:
-            try:
-                self._db_connection.login()
-            except Exception, e:
-                # FIXME: Better handling of auth error
-                raise e
+            self._db_connection.login()
         
         if set_keyspace:
             try:
@@ -181,7 +195,7 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
                                      strategy_class=replication_strategy_class,
                                      replication_factor=replication_factor,
                                      cf_defs=[])
-                self._db_connection.client.system_add_keyspace(keyspace_def)
+                self._db_connection.get_client().system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
     
         return self._db_connection

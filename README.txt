@@ -16,14 +16,14 @@ The backend requires the 0.7 version of Cassandra. 0.7 has several features
 (e.g. programmatic creation/deletion of keyspaces & column families, secondary index
 support) that are useful for the Django database backend, so I targeted that
 instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
-so the two version are incompatible. I'm using the final release of 0.7.0. That's
-the only version I've tested against, so no promises if you try it with a
+so the two version are incompatible. I'm currently using the 0.7.4 release. That's
+the only version I'm testing against, so no promises if you try it with a
 different version.
 
 If you're updating from a previous version of the Cassandra DB backend, then it's
 possible/likely that the format it stores models/fields in Cassandra has changed,
 so you should wipe your Cassandra database. If you're using the default locations
-for things, then this should involve executing a "rm -rf /var/log/cassandra/*"
+for things, then this should involve executing something like "rm -rf /var/log/cassandra/*"
 and "rm -rf /var/lib/cassandra/*". Obviously at some point as the backend becomes
 more stable data format compatibility or migration will be supported, but for now
 it's not worth the effort.
@@ -180,6 +180,35 @@ Known Issues
   daemon not running, a versioning mismatch between client and Cassandra
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
+
+Changes For 0.1.2
+=================
+
+- Added support for configuring the column family definition settings so that
+  you can tune the various memtable, row/key cache, & compaction settings.
+  You can configure global default settings in the datbase settings in
+  settings.py and you can have per-model overrides for the column family
+  associated with each model. For the global settings you define an item
+  in the dictionary of database settings whose key is named
+  CASSANDRA_COLUMN_FAMILY_DEF_DEFAULT_SETTINGS and whose value is a dictionary
+  of the optional keyword arguments to be passed to the CfDef constructor.
+  Consult the Cassandra docs for the list of valid keyword args to use.
+  Currently the per-model settings overrides are specified inline in the models,
+  which isn't a general solution but works in most cases.
+  I'm also planning on adding a way to specify these settings for models
+  non-intrusively. With the current inline mechanism you define a nested class
+  inside the model called 'CassandraSettings'. The column family def settings
+  are specified in a class variable named COLUMN_FAMILY_DEF_SETTINGS, which
+  is a dictionary of any of the optional CfDef settings that you want to
+  override from the default values. All of these things are optional, so if
+  you don't need to override anything you don't need to define the
+  CassandraSettings class. All of the required settings for the CfDef
+  (e.g. keyspace, name, etc.) are determined by other means.
+- Fixed a bug in handling null/missing columns when converting from the
+  value from Cassandra.
+- Fixed some bugs with reconnecting to Cassandra if connectivity to
+  Cassandra is disrupted.
+- Added a few new tests and did some cleanup to the unit tests
 
 Changes For 0.1.1
 =================

@@ -13,6 +13,7 @@
 #   limitations under the License.
 
 from django.db.backends.creation import TEST_DATABASE_PREFIX
+from django.db.utils import DatabaseError
 from djangotoolbox.db.creation import NonrelDatabaseCreation
 from cassandra import Cassandra
 from cassandra.ttypes import *
@@ -64,16 +65,32 @@ class DatabaseCreation(NonrelDatabaseCreation):
         # Browsing through fields to find indexed fields
         for field in opts.local_fields:
             if field.db_index:
-                column_name = field.db_column if field.db_column else field.column
-                column_def = ColumnDef(name=str(column_name), validation_class='BytesType', index_type=IndexType.KEYS, index_name=str(column_name))
+                column_name = str(field.db_column if field.db_column else field.column)
+                column_def = ColumnDef(name=column_name, validation_class='BytesType',
+                                       index_type=IndexType.KEYS, index_name=column_name)
                 column_metadata.append(column_def)
-                    
-        column_family_def = CfDef(keyspace=keyspace,
-                                  name = opts.db_table,
-                                  comparator_type = "UTF8Type",
-                                  column_metadata = column_metadata)
         
-        db_connection.client.system_add_column_family(column_family_def)
+        cfdef_settings = self.connection.column_family_def_defaults.copy()
+        
+        if hasattr(model, 'CassandraSettings') and \
+            hasattr(model.CassandraSettings, 'COLUMN_FAMILY_DEF_SETTINGS'):
+            cfdef_overrides = model.CassandraSettings.COLUMN_FAMILY_DEF_SETTINGS
+            if type(cfdef_overrides) is not dict:
+                raise DatabaseError('The value of COLUMN_FAMILY_DEF_SETTINGS in the '
+                    'CassandraSettings class must be a dictionary of the optional '
+                    'settings to use when creating the column family.')
+            cfdef_settings.update(cfdef_overrides)
+
+        cfdef_settings['keyspace'] = keyspace
+        if not cfdef_settings.get('name'):
+            cfdef_settings['name'] = opts.db_table
+        if not cfdef_settings.get('comparator_type'):
+            cfdef_settings['comparator_type'] = 'UTF8Type'
+        cfdef_settings['column_metadata'] = column_metadata
+        
+        column_family_def = CfDef(**cfdef_settings)
+        
+        db_connection.get_client().system_add_column_family(column_family_def)
         
         return [], {}
 
@@ -85,7 +102,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
         db_connection = self.connection.get_db_connection(False, False)
         
         try:
-            db_connection.client.system_drop_keyspace(keyspace_name)
+            db_connection.get_client().system_drop_keyspace(keyspace_name)
         except Exception, e:
             # We want succeed without complaining if the test db doesn't
             # exist yet, so we just assume that any exception that's raised
