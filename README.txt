@@ -181,6 +181,15 @@ Known Issues
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
 
+
+Changes For 0.1.3
+=================
+
+- Fixed a bug with query set filter operations if there were multiple filters
+  on indexed fields (e.g. foreign key fields)
+- Fixed a bug with order_by operations on foreign key fields
+- Thanks to Abd Allah Diab for reporting these bugs
+
 Changes For 0.1.2
 =================
 
