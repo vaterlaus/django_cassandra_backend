@@ -76,9 +76,9 @@ COMBINE_UNION = 2
 def combine_rows(rows1, rows2, op, primary_key_column):
     # Handle cases where rows1 and/or rows2 are None or empty
     if not rows1:
-        return list(rows2) if rows2 != None else []
+        return list(rows2) if rows2 and (op == COMBINE_UNION) else []
     if not rows2:
-        return list(rows1)
+        return list(rows1) if (op == COMBINE_UNION) else []
     
     # We're going to iterate over the lists in parallel and
     # compare the elements so we need both lists to be sorted

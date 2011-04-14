@@ -59,10 +59,12 @@ class CassandraQuery(NonrelQuery):
         self.cached_results = None
         
         self.indexed_columns = []
+        self.field_name_to_column_name = {}
         for field in fields:
+            column_name = field.db_column if field.db_column else field.column
             if field.db_index:
-                column_name = field.db_column if field.db_column else field.column
                 self.indexed_columns.append(column_name)
+            self.field_name_to_column_name[field.name] = column_name
                 
     # This is needed for debugging
     def __repr__(self):
@@ -269,15 +271,18 @@ class CassandraQuery(NonrelQuery):
 
     @safe_call
     def order_by(self, ordering):
-       self.ordering_spec = []
-       for order in ordering:
-           if order.startswith('-'):
-               column = order[1:]
-               reversed = True
-           else:
-               column = order
-               reversed = False
-           self.ordering_spec.append((column, reversed))
+        self.ordering_spec = []
+        for order in ordering:
+            if order.startswith('-'):
+                field_name = order[1:]
+                reversed = True
+            else:
+                field_name = order
+                reversed = False
+            column_name = self.field_name_to_column_name.get(field_name, field_name)
+            #if column in self.foreign_key_columns:
+            #    column = column + '_id'
+            self.ordering_spec.append((column_name, reversed))
             
     def init_predicate(self, parent_predicate, node):
         if isinstance(node, WhereNode):
