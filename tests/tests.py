@@ -490,3 +490,72 @@ class OperationTest(TestCase):
         s4,s6 = qs[:]
         self.assertEqual(s4.id,'key4')
         self.assertEqual(s6.id,'key6')
+
+class Department(models.Model):
+    name = models.CharField(primary_key=True, max_length=256)
+    
+    def __unicode__(self):
+            return self.title
+
+class DepartmentRequest(models.Model):
+    from_department = models.ForeignKey(Department, related_name='froms')
+    to_department = models.ForeignKey(Department, related_name='tos')
+
+class RestTestMultipleForeignKeys(TestCase):
+
+    def test_it(self):
+    
+        for i in range(0,4):
+            department = Department()
+            department.name = "id_" + str(i)
+            department.save()
+            
+        departments = Department.objects.order_by('name')
+        d0 = departments[0]
+        d1 = departments[1]
+        d2 = departments[2]
+        d3 = departments[3]
+    
+        req = DepartmentRequest()
+        req.from_department = d0
+        req.to_department = d1
+        req.save()
+    
+        req = DepartmentRequest()
+        req.from_department = d2
+        req.to_department = d1
+        req.save()
+    
+        rs = DepartmentRequest.objects.filter(from_department = d3, to_department = d1)
+        self.assertEqual(rs.count(), 0)
+
+        rs = DepartmentRequest.objects.filter(from_department=d0, to_department=d1)
+        self.assertEqual(rs.count(), 1)
+        req = rs[0]
+        self.assertEqual(req.from_department, d0)
+        self.assertEqual(req.to_department, d1)
+
+        rs = DepartmentRequest.objects.filter(to_department=d1).order_by('from_department')
+        self.assertEqual(rs.count(), 2)
+        req = rs[0]
+        self.assertEqual(req.from_department, d0)
+        self.assertEqual(req.to_department, d1)
+        req = rs[1]
+        self.assertEqual(req.from_department, d2)
+        self.assertEqual(req.to_department, d1)
+
+
+class EmptyModel(models.Model):
+    pass
+
+class EmptyModelTest(TestCase):
+    
+    def test_empty_model(self):
+        em = EmptyModel()
+        em.save()
+        qs = EmptyModel.objects.all()
+        self.assertEqual(qs.count(), 1)
+        em2 = qs[0]
+        self.assertEqual(em.id, em2.id)
+
+

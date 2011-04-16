@@ -33,6 +33,18 @@ class DatabaseFeatures(NonrelDatabaseFeatures):
 class DatabaseOperations(NonrelDatabaseOperations):
     compiler_module = __name__.rsplit('.', 1)[0] + '.compiler'
     
+    def pk_default_value(self):
+        """
+        Use None as the value to indicate to the insert compiler that it needs
+        to auto-generate a guid to use for the id. The case where this gets hit
+        is when you create a model instance with no arguments. We override from
+        the default implementation (which returns 'DEFAULT') beacuse it's possible
+        that someone would explicitly initialize the id field to be that value and
+        we wouldn't want to override that. But None would never be a valid value
+        for the id.
+        """
+        return None
+    
     def sql_flush(self, style, tables, sequence_list):
         for table_name in tables:
             self.connection.creation.flush_table(table_name)

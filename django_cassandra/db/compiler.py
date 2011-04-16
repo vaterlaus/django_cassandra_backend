@@ -411,29 +411,26 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
     @safe_call
     def insert(self, data, return_id=False):
         pk_column = self.query.get_meta().pk.column
-        if pk_column in data:
-            key = data[pk_column]
-            # FIXME: For now we leave the key data as a column too. This is
-            # suboptimal, since the data is duplicated, but there are a couple of cases
-            # where you need to keep the column. First, if you have a model with only
-            # a single field that's the primary key (admittedly a semi-pathological case,
-            # but I can imagine valid use cases where you have this), then it doesn't
-            # work if the column is removed, because then there are no columns and that's
-            # interpreted as a deleted row (i.e. the usual Cassandra tombstone issue).
-            # Second, if there's a secondary index configured for the primary key field
-            # (not particularly useful with the current Cassandra, but would be valid when
-            # you can do a range query on indexed column) then you'd want to keep the
-            # column. So for now, we just leave the column in there so these cases work.
-            # Eventually we can optimize this and remove the column where it makes sense.
-            #del data[pk_column]
-        else:
+        # See if the data arguments contain a value for the primary key.
+        # FIXME: For now we leave the key data as a column too. This is
+        # suboptimal, since the data is duplicated, but there are a couple of cases
+        # where you need to keep the column. First, if you have a model with only
+        # a single field that's the primary key (admittedly a semi-pathological case,
+        # but I can imagine valid use cases where you have this), then it doesn't
+        # work if the column is removed, because then there are no columns and that's
+        # interpreted as a deleted row (i.e. the usual Cassandra tombstone issue).
+        # Second, if there's a secondary index configured for the primary key field
+        # (not particularly useful with the current Cassandra, but would be valid when
+        # you can do a range query on indexed column) then you'd want to keep the
+        # column. So for now, we just leave the column in there so these cases work.
+        # Eventually we can optimize this and remove the column where it makes sense.
+        key = data.get(pk_column)
+        if not key:
             key = str(uuid4())
             # Insert the key as column data too
             # FIXME. See the above comment. When the primary key handling is optimized,
             # then we would not always add the key to the data here.
             data[pk_column] = key
-        
-        #key = str(key)
         
         timestamp = get_next_timestamp()
         

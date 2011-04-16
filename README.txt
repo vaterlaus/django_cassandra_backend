@@ -181,6 +181,13 @@ Known Issues
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
 
+Changes For 0.1.4
+=================
+
+- Fixed a bug with the id field not being properly initialized if the model
+  instance is created with no intialization arguments.
+- Added unit tests for the bugs that were fixed recently
+- Thanks to Abd Allah Diab for reporting this bug
 
 Changes For 0.1.3
 =================
