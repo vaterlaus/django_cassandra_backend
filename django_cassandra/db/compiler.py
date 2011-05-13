@@ -171,7 +171,7 @@ class CassandraQuery(NonrelQuery):
         
         for attempt in (1,2):
             try:
-                key_slice = db_connection.client.get_indexed_slices(column_parent, index_clause, slice_predicate, self.connection.read_consistency_level)
+                key_slice = db_connection.get_client().get_indexed_slices(column_parent, index_clause, slice_predicate, self.connection.read_consistency_level)
                 rows = self._convert_key_slice_to_rows(key_slice)
                 break
             except TTransportException, e:
@@ -201,7 +201,7 @@ class CassandraQuery(NonrelQuery):
         #key_range = KeyRange(start_key='\x01', end_key=end_key, count=self.connection.max_key_count)
         for attempt in (1,2):
             try:
-                key_slice = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
+                key_slice = db_connection.get_client().get_range_slices(column_parent, slice_predicate, key_range, self.connection.read_consistency_level)
                 rows = self._convert_key_slice_to_rows(key_slice)
                 break
             except Exception, e:
@@ -261,7 +261,7 @@ class CassandraQuery(NonrelQuery):
         db_connection = self.connection.db_connection
         for attempt in (1,2):
             try:
-                db_connection.client.batch_mutate(mutation_map, self.connection.write_consistency_level)
+                db_connection.get_client().batch_mutate(mutation_map, self.connection.write_consistency_level)
                 break
             except TTransportException, e:
                 # Only retry once, so if it's the second time through, propagate the exception
@@ -446,7 +446,7 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         column_family = self.query.get_meta().db_table
         for attempt in (1,2):
             try:
-                db_connection.client.batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
+                db_connection.get_client().batch_mutate({key: {column_family: mutation_list}}, self.connection.write_consistency_level)
                 break
             except TTransportException, e:
                 # Only retry once, so if it's the second time through, propagate the exception

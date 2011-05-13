@@ -181,6 +181,12 @@ Known Issues
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
 
+
+Changes For 0.1.5
+=================
+
+- Fixed a bug with the Cassandra reconnection logic
+
 Changes For 0.1.4
 =================
 

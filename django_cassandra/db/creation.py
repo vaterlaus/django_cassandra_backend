@@ -168,16 +168,16 @@ class DatabaseCreation(NonrelDatabaseCreation):
         # UPDATE: Tried it with rc2 and it worked calling truncate but it was
         # slower than using remove (at least for the unit tests), so for now
         # I'm leaving it alone pending further investigation.
-        #db_connection.client.truncate(table_name)
+        #db_connection.get_client().truncate(table_name)
         
         column_parent = ColumnParent(column_family=table_name)
         slice_predicate = SlicePredicate(column_names=[])
         key_range = KeyRange(start_token = '0', end_token = '0', count = 1000)
-        key_slice_list = db_connection.client.get_range_slices(column_parent, slice_predicate, key_range, ConsistencyLevel.ONE)
+        key_slice_list = db_connection.get_client().get_range_slices(column_parent, slice_predicate, key_range, ConsistencyLevel.ONE)
         column_path = ColumnPath(column_family=table_name)
         timestamp = get_next_timestamp()
         for key_slice in key_slice_list:
-            db_connection.client.remove(key_slice.key, column_path, timestamp, ConsistencyLevel.ONE)
+            db_connection.get_client().remove(key_slice.key, column_path, timestamp, ConsistencyLevel.ONE)
 
         
     def sql_indexes_for_model(self, model, style):
