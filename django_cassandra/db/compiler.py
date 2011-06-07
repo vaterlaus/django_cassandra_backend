@@ -334,6 +334,25 @@ class SQLCompiler(NonrelCompiler):
     query_class = CassandraQuery
 
     SPECIAL_NONE_VALUE = "\b"
+
+    # Override this method from NonrelCompiler to get around problem with
+    # mixing the field default values with the field format as its stored
+    # in the database (i.e. convert_value_from_db should only be passed
+    # the database-specific storage format not the field default value.
+    def _make_result(self, entity, fields):
+        result = []
+        for field in fields:
+            value = entity.get(field.column)
+            if value is not None:
+                value = self.convert_value_from_db(
+                    field.db_type(connection=self.connection), value)
+            else:
+                value = field.get_default()
+            if not field.null and value is None:
+                raise DatabaseError("Non-nullable field %s can't be None!" % field.name)
+            result.append(value)
+            
+        return result
     
     # This gets called for each field type when you fetch() an entity.
     # db_type is the string that you used in the DatabaseCreation mapping

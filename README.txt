@@ -182,6 +182,11 @@ Known Issues
   these cases.
 
 
+Changes for 0.1.6
+=================
+
+- Fixed a bug with handling default values of fields
+
 Changes For 0.1.5
 =================
 
