@@ -182,6 +182,12 @@ Known Issues
   these cases.
 
 
+Changes for 0.1.7
+=================
+
+- Made the max key/column counts bigger as a temporary workaround for large queries.
+  Really need to support chunked operations for this to work better.
+
 Changes for 0.1.6
 =================
 
