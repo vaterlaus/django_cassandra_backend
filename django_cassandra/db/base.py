@@ -155,8 +155,8 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
 
         self.read_consistency_level = self.settings_dict.get('CASSANDRA_READ_CONSISTENCY_LEVEL', ConsistencyLevel.ONE)
         self.write_consistency_level = self.settings_dict.get('CASSANDRA_WRITE_CONSISTENCY_LEVEL', ConsistencyLevel.ONE)
-        self.max_key_count = self.settings_dict.get('CASSANDRA_MAX_KEY_COUNT', 10000)
-        self.max_column_count = self.settings_dict.get('CASSANDRA_MAX_COLUMN_COUNT', 1000)
+        self.max_key_count = self.settings_dict.get('CASSANDRA_MAX_KEY_COUNT', 1000000)
+        self.max_column_count = self.settings_dict.get('CASSANDRA_MAX_COLUMN_COUNT', 10000)
         self.column_family_def_defaults = self.settings_dict.get('CASSANDRA_COLUMN_FAMILY_DEF_DEFAULT_SETTINGS', {})
 
         self._db_connection = None
