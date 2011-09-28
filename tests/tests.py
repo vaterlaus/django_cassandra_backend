@@ -17,6 +17,7 @@ from .models import *
 import datetime
 import decimal
 from django.db.models.query import Q
+from django.db.utils import DatabaseError
 
 class FieldsTest(TestCase):
     
@@ -558,4 +559,57 @@ class EmptyModelTest(TestCase):
         em2 = qs[0]
         self.assertEqual(em.id, em2.id)
 
+class CompoundKeyTest(TestCase):
+    
+    def test_construct_with_no_id(self):
+        ckm = CompoundKeyModel(name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        self.assertEqual(ckm.id, 'foo|6')
+    
+    def test_construct_with_id(self):
+        ckm = CompoundKeyModel(id='foo|6', name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        self.assertEqual(ckm.id, 'foo|6')
 
+    def test_malformed_id(self):
+        ckm = CompoundKeyModel(id='abc', name='foo', index=6, extra='hello')
+        self.failUnlessRaises(DatabaseError, ckm.save)
+        
+    def test_construct_mismatched_id(self):
+        ckm = CompoundKeyModel(id='foo|5', name='foo', index=6, extra='hello')
+        self.failUnlessRaises(DatabaseError, ckm.save)
+        
+    def test_update_non_key_field(self):
+        ckm = CompoundKeyModel(name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        ckm.extra = 'goodbye'
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        self.assertEqual(ckm.extra, 'goodbye')
+
+    def test_update_no_id(self):
+        ckm = CompoundKeyModel(id='foo|6', name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel(name='foo', index=6, extra='goodbye')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        self.assertEqual(ckm.extra, 'goodbye')
+        
+    def test_update_mismatched_id(self):
+        ckm = CompoundKeyModel(name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.all()[0]
+        ckm.name = 'bar'
+        self.failUnlessRaises(DatabaseError, ckm.save)
+
+    def test_custom_separator(self):
+        s = Slice(id='default')
+        s.save()
+        ckm = CompoundKeyModel2(slice=s, name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel2.objects.all()[0]
+        self.assertEqual(ckm.id, 'default#foo#6')
+        

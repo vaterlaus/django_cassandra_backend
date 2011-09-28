@@ -37,3 +37,30 @@ class Test(models.Model):
     class Meta:
         db_table = 'Test'
         ordering = ['id']
+
+
+
+class CompoundKeyModel(models.Model):
+    name = models.CharField(max_length=64)
+    index = models.IntegerField()
+    extra = models.CharField(max_length=32, default='test')
+    
+    class CassandraSettings:
+        COMPOUND_KEY_FIELDS = ('name', 'index')
+
+
+class CompoundKeyModel2(models.Model):
+    slice = models.ForeignKey(Slice)
+    name = models.CharField(max_length=64)
+    index = models.IntegerField()
+    extra = models.CharField(max_length=32)
+    
+    class CassandraSettings:
+        COMPOUND_KEY_FIELDS = ('slice', 'name', 'index')
+        COMPOUND_KEY_SEPARATOR = '#'
+
+class CompoundKeyModel3(models.Model):
+    name = models.CharField(max_length=32)
+
+    class CassandraSettings:
+        COMPOUND_KEY_FIELDS = ('name')

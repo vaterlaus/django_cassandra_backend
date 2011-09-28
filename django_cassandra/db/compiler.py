@@ -18,6 +18,7 @@ import traceback
 import datetime
 import decimal
 
+from django.db.models import ForeignKey
 from django.db.models.sql.where import AND, OR, WhereNode
 from django.db.utils import DatabaseError, IntegrityError
 
@@ -430,6 +431,28 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
     @safe_call
     def insert(self, data, return_id=False):
         pk_column = self.query.get_meta().pk.column
+        model = self.query.model
+        compound_key_fields = None
+        if hasattr(model, 'CassandraSettings'):
+            if hasattr(model.CassandraSettings, 'ADJUSTED_COMPOUND_KEY_FIELDS'):
+                compound_key_fields = model.CassandraSettings.ADJUSTED_COMPOUND_KEY_FIELDS
+            elif hasattr(model.CassandraSettings, 'COMPOUND_KEY_FIELDS'):
+                compound_key_fields = []
+                for field_name in model.CassandraSettings.COMPOUND_KEY_FIELDS:
+                    field_class = None
+                    for lf in model._meta.local_fields:
+                        if lf.name == field_name:
+                            field_class = lf
+                            break
+                    if field_class is None:
+                        raise DatabaseError('Invalid compound key field')
+                    if type(field_class) is ForeignKey:
+                        field_name += '_id'
+                    compound_key_fields.append(field_name)
+                model.CassandraSettings.ADJUSTED_COMPOUND_KEY_FIELDS = compound_key_fields
+            separator = model.CassandraSettings.COMPOUND_KEY_SEPARATOR \
+                if hasattr(model.CassandraSettings, 'COMPOUND_KEY_SEPARATOR') \
+                else self.connection.settings_dict.get('CASSANDRA_COMPOUND_KEY_SEPARATOR', '|')
         # See if the data arguments contain a value for the primary key.
         # FIXME: For now we leave the key data as a column too. This is
         # suboptimal, since the data is duplicated, but there are a couple of cases
@@ -444,8 +467,21 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         # column. So for now, we just leave the column in there so these cases work.
         # Eventually we can optimize this and remove the column where it makes sense.
         key = data.get(pk_column)
-        if not key:
-            key = str(uuid4())
+        if key:
+            if compound_key_fields is not None:
+                compound_key_values = key.split(separator)
+                for field_name, compound_key_value in zip(compound_key_fields, compound_key_values):
+                    if field_name in data and data[field_name] != compound_key_value:
+                        raise DatabaseError("The value of the compound key doesn't mismatch the values of the individual fields")
+        else:
+            if compound_key_fields is not None:
+                try:
+                    compound_key_values = [data.get(field_name) for field_name in compound_key_fields]
+                    key = separator.join(compound_key_values)
+                except Exception, e:
+                    raise DatabaseError('The values of the fields used to form a compound key must be specified and cannot be null')
+            else:
+                key = str(uuid4())
             # Insert the key as column data too
             # FIXME. See the above comment. When the primary key handling is optimized,
             # then we would not always add the key to the data here.
