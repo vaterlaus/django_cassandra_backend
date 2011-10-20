@@ -19,15 +19,15 @@ SECONDARY_INDEX_SUPPORT_ENABLED = True
 
 class InvalidSortSpecException(Exception):
     def __init__(self):
-        super(InvalidSortSpecException, self).__init__(self, 'The row sort spec must be a sort spec tuple/list or a tuple/list of sort specs')
+        super(InvalidSortSpecException, self).__init__('The row sort spec must be a sort spec tuple/list or a tuple/list of sort specs')
 
 class InvalidRowCombinationOpException(Exception):
     def __init__(self):
-        super(InvalidCombineOpException, self).__init__(self, 'Invalid row combination operation')
+        super(InvalidRowCombinationOpException, self).__init__('Invalid row combination operation')
 
 class InvalidPredicateOpException(Exception):
     def __init__(self):
-        super(InvalidPredicateOpException, self).__init__(self, 'Invalid/unsupported query predicate operation')
+        super(InvalidPredicateOpException, self).__init__('Invalid/unsupported query predicate operation')
 
 
 COMPOUND_OP_AND = 1
