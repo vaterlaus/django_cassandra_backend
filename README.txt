@@ -182,6 +182,39 @@ Known Issues
   these cases.
 
 
+Changes for 0.2
+===============
+- added support for automatic construction of compound id/pk fields that
+are composed of the values of other fields in the model. You would typically
+use this when you have some subset of the fields in the model that together
+uniquely identify that particular instance of the model. Compound key generation
+is enabled for a model by defining a class variable named COMPOUND_KEY_FIELDS
+in the nested class called "CassandraSettings" of the model. The value of the
+COMPOUND_KEY_FIELDS value is a tuple of the names of the fields that are used
+to form the compound key. By default the field values are separated by the '|'
+character, but this separator value can be overridden by defining a class
+variable in the CassandraSettings named COMPOUND_KEY_SEPARATOR whose value is
+the character to use as the separator.
+- added support for running under the 0.8 version of Cassandra. This included
+fixing a bug where the secondary index names were not properly scoped with
+its associated column family (which "worked" before because Cassandra wasn't
+properly checking for conflicts) and properly settings the replication factor
+as a strategy option instead of a field in the KsDef struct. The code now does
+check of the API version so it can detect whether it's running against the
+0.7 or 0.8 version of Cassandra, so it still works under 0.7.
+- added support for query set update operations. This doesn't have the same
+transactional semantics that it would have on a relational database, but it
+does mean that you can use the backend with code that depends on this feature.
+In particular it means that cascading deletes can now be supported.
+- Optional support for cascading deletes. For large data sets cascading deletes
+are typically a bad idea, so they are disabled by default. To enable them you
+define a value in the database settings dictionary named
+"CASSANDRA_ENABLE_CASCADING_DELETES" whose value is True.
+- fixed some bugs in the constructors of some exception classes
+- cleaned up the code for handling reconnecting to Cassandra if there's a
+disruption in the connection (e.g. Cassandra restarting).
+
+support
 Changes for 0.1.7
 =================
 
