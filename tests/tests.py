@@ -130,7 +130,27 @@ class BasicFunctionalityTest(TestCase):
         hqs = Host.objects.filter(id='key1')
         count = hqs.count()
         self.assertEqual(count,0)
-        
+    
+    def test_query_update(self):
+        slice0 = Slice.objects.get(pk='key0')
+        qs = Host.objects.filter(slice=slice0)
+        qs.update(ip='192.168.1.1')
+        qs = Host.objects.all()
+        for host in qs:
+            if host.slice.pk == 'key0':
+                self.assertEqual(host.ip, '192.168.1.1')
+            else:
+                self.assertNotEqual(host.ip, '192.168.1.1')
+    
+    def test_cascading_delete(self):
+        slice0 = Slice.objects.get(pk='key0')
+        slice0.delete()
+        hqs = Host.objects.all()
+        count = hqs.count()
+        self.assertEqual(count, 3)
+        for host in hqs:
+            self.assertEqual(host.slice_id, 'key1')
+            
     def test_default_id(self):
         s = Slice(name='slice2')
         s.save()

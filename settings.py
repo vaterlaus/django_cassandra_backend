@@ -19,7 +19,7 @@ DATABASES = {
         'PORT': '9160',                      # Set to empty string for default. Not used with sqlite3.
         'SUPPORTS_TRANSACTIONS': False,
         'CASSANDRA_REPLICATION_FACTOR': 1,
-        'CASSANDRA_REPLICATION_STRATEGY': 'org.apache.cassandra.locator.SimpleStrategy'
+        'CASSANDRA_ENABLE_CASCADING_DELETES': True
      }
 }
 

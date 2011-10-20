@@ -23,13 +23,18 @@ from thrift.transport import TSocket
 from thrift.protocol import TBinaryProtocol
 from cassandra import Cassandra
 from cassandra.ttypes import *
+import re
 import time
 from .creation import DatabaseCreation
 from .introspection import DatabaseIntrospection
 
 class DatabaseFeatures(NonrelDatabaseFeatures):
     string_based_auto_field = True
-
+    
+    def __init__(self, connection):
+        super(DatabaseFeatures, self).__init__(connection)
+        self.supports_deleting_related_objects = connection.settings_dict.get('CASSANDRA_ENABLE_CASCADING_DELETES', False)
+        
 class DatabaseOperations(NonrelDatabaseOperations):
     compiler_module = __name__.rsplit('.', 1)[0] + '.compiler'
     
@@ -38,7 +43,7 @@ class DatabaseOperations(NonrelDatabaseOperations):
         Use None as the value to indicate to the insert compiler that it needs
         to auto-generate a guid to use for the id. The case where this gets hit
         is when you create a model instance with no arguments. We override from
-        the default implementation (which returns 'DEFAULT') beacuse it's possible
+        the default implementation (which returns 'DEFAULT') because it's possible
         that someone would explicitly initialize the id field to be that value and
         we wouldn't want to override that. But None would never be a valid value
         for the id.
@@ -185,11 +190,21 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         
         if not self._db_connection.is_connected():
             self._db_connection.open(False, False)
-            
-            #version = client.describe_version()
+        
+        try:
+            version_string = self._db_connection.get_client().describe_version()
             # FIXME: Should do some version check here to make sure that we're
             # talking to a cassandra daemon that supports the operations we require
-            
+            m = re.match('^([0-9]+)\.([0-9]+)\.([0-9]+)$', version_string)
+            major_version = int(m.group(1))
+            minor_version = int(m.group(2))
+            patch_version = int(m.group(3))
+        except Exception, e:
+            raise DatabaseError('Invalid Thrift version string', e)
+        
+        # Determine supported features based on the API version
+        self.supports_replication_factor_as_strategy_option = major_version >= 19 and minor_version >= 10
+        
         if login:
             self._db_connection.login()
         
@@ -197,16 +212,25 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             try:
                 self._db_connection.set_keyspace()
             except Exception, e:
-                replication_factor = self.settings_dict.get('CASSANDRA_REPLICATION_FACTOR')
-                if not replication_factor:
-                    replication_factor = 1
-                replication_strategy_class = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY')
-                if not replication_strategy_class:
-                    replication_strategy_class = 'org.apache.cassandra.locator.SimpleStrategy'
-                keyspace_def = KsDef(name=self._db_connection.keyspace,
-                                     strategy_class=replication_strategy_class,
-                                     replication_factor=replication_factor,
-                                     cf_defs=[])
+                replication_factor = self.settings_dict.get('CASSANDRA_REPLICATION_FACTOR', 1)
+                strategy_class = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY', 'org.apache.cassandra.locator.SimpleStrategy')
+                strategy_options = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY_OPTIONS', {})
+                if type(strategy_options) != dict:
+                    raise DatabaseError('CASSANDRA_REPLICATION_STRATEGY_OPTIONS must be a dictionary')
+                
+                keyspace_def_args = {
+                    'name': self._db_connection.keyspace,
+                    'strategy_class': strategy_class,
+                    'strategy_options': strategy_options,
+                    'cf_defs': []}
+                
+                if self.supports_replication_factor_as_strategy_option:
+                    if 'replication_factor' not in strategy_options:
+                        strategy_options['replication_factor'] = str(replication_factor)
+                else:
+                    keyspace_def_args['replication_factor'] = replication_factor
+
+                keyspace_def = KsDef(**keyspace_def_args)
                 self._db_connection.get_client().system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
     

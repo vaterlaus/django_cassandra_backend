@@ -67,7 +67,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
             if field.db_index:
                 column_name = str(field.db_column if field.db_column else field.column)
                 column_def = ColumnDef(name=column_name, validation_class='BytesType',
-                                       index_type=IndexType.KEYS, index_name=column_name)
+                                       index_type=IndexType.KEYS)
                 column_metadata.append(column_def)
         
         cfdef_settings = self.connection.column_family_def_defaults.copy()

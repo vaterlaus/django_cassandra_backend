@@ -13,6 +13,8 @@
 #   limitations under the License.
 
 import time
+from thrift.transport import TTransport
+from django.db.utils import DatabaseError
 
 def _cmp_to_key(comparison_function):
     """
@@ -167,3 +169,30 @@ def convert_string_to_list(s):
 
 def convert_list_to_string(l):
     return unicode(l)
+
+
+class CassandraConnectionError(DatabaseError):
+    def __init__(self):
+        super(CassandraConnectionError,self).__init__('Error connecting to Cassandra database')
+
+
+class CassandraAccessError(DatabaseError):
+    def __init__(self):
+        super(CassandraAccessException,self).__init__('Error accessing Cassandra database')
+
+
+def call_cassandra_with_reconnect(connection, fn, *args, **kwargs):
+    try:
+        try:
+            results = fn(*args, **kwargs)
+        except TTransport.TTransportException:
+            connection.reopen()
+            results = fn(*args, **kwargs)
+    except TTransport.TTransportException, e:
+        raise CassandraConnectionError()
+    except Exception, e:
+        raise CassandraAccessError()
+
+    return results
+
+
