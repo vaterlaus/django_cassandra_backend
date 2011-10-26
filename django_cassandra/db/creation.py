@@ -104,7 +104,7 @@ class DatabaseCreation(NonrelDatabaseCreation):
         try:
             db_connection.get_client().system_drop_keyspace(keyspace_name)
         except Exception, e:
-            # We want succeed without complaining if the test db doesn't
+            # We want to succeed without complaining if the test db doesn't
             # exist yet, so we just assume that any exception that's raised
             # was for that reason and ignore it, except for printing a
             # message if verbose output is enabled

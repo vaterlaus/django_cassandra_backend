@@ -12,6 +12,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+from django.db.utils import DatabaseError
+
 from djangotoolbox.db.base import NonrelDatabaseFeatures, \
     NonrelDatabaseOperations, NonrelDatabaseWrapper, NonrelDatabaseClient, \
     NonrelDatabaseValidation, NonrelDatabaseIntrospection, \
@@ -27,6 +29,7 @@ import re
 import time
 from .creation import DatabaseCreation
 from .introspection import DatabaseIntrospection
+from .utils import call_cassandra_with_reconnect
 
 class DatabaseFeatures(NonrelDatabaseFeatures):
     string_based_auto_field = True
@@ -128,7 +131,10 @@ class CassandraConnection(object):
                 
     def close(self):
         if self.transport != None:
-            self.transport.close()
+            try:
+                self.transport.close()
+            except Exception, e:
+                pass
             self.transport = None
             self.client = None
             self.keyspace_set = False
@@ -165,45 +171,30 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
         self.column_family_def_defaults = self.settings_dict.get('CASSANDRA_COLUMN_FAMILY_DEF_DEFAULT_SETTINGS', {})
 
         self._db_connection = None
-
-    def get_db_connection(self, set_keyspace=False, login=False):
-        if not self._db_connection:
-            # Get the host and port specified in the database backend settings.
-            # Default to the standard Cassandra settings.
-            host = self.settings_dict.get('HOST')
-            if not host or host == '':
-                host = 'localhost'
-                
-            port = self.settings_dict.get('PORT')
-            if not port or port == '':
-                port = 9160
-                
-            keyspace = self.settings_dict.get('NAME')
-            if keyspace == None:
-                keyspace = 'django'
-                
-            user = self.settings_dict.get('USER')
-            password = self.settings_dict.get('PASSWORD')
-            
-            # Create our connection wrapper
-            self._db_connection = CassandraConnection(host, port, keyspace, user, password)
+        self.determined_version = False
+        
+    def configure_connection(self, set_keyspace=False, login=False):
         
         if not self._db_connection.is_connected():
             self._db_connection.open(False, False)
-        
-        try:
+            self.determined_version = False
+            
+        if not self.determined_version:
+            # Determine which version of Cassandra we're connected to
             version_string = self._db_connection.get_client().describe_version()
-            # FIXME: Should do some version check here to make sure that we're
-            # talking to a cassandra daemon that supports the operations we require
-            m = re.match('^([0-9]+)\.([0-9]+)\.([0-9]+)$', version_string)
-            major_version = int(m.group(1))
-            minor_version = int(m.group(2))
-            patch_version = int(m.group(3))
-        except Exception, e:
-            raise DatabaseError('Invalid Thrift version string', e)
-        
-        # Determine supported features based on the API version
-        self.supports_replication_factor_as_strategy_option = major_version >= 19 and minor_version >= 10
+            try:
+                # FIXME: Should do some version check here to make sure that we're
+                # talking to a cassandra daemon that supports the operations we require
+                m = re.match('^([0-9]+)\.([0-9]+)\.([0-9]+)$', version_string)
+                major_version = int(m.group(1))
+                minor_version = int(m.group(2))
+                patch_version = int(m.group(3))
+                self.determined_version = True
+            except Exception, e:
+                raise DatabaseError('Invalid Thrift version string', e)
+            
+            # Determine supported features based on the API version
+            self.supports_replication_factor_as_strategy_option = major_version >= 19 and minor_version >= 10
         
         if login:
             self._db_connection.login()
@@ -233,7 +224,31 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
                 keyspace_def = KsDef(**keyspace_def_args)
                 self._db_connection.get_client().system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
-    
+        
+    def get_db_connection(self, set_keyspace=False, login=False):
+        if not self._db_connection:
+            # Get the host and port specified in the database backend settings.
+            # Default to the standard Cassandra settings.
+            host = self.settings_dict.get('HOST')
+            if not host or host == '':
+                host = 'localhost'
+                
+            port = self.settings_dict.get('PORT')
+            if not port or port == '':
+                port = 9160
+                
+            keyspace = self.settings_dict.get('NAME')
+            if keyspace == None:
+                keyspace = 'django'
+                
+            user = self.settings_dict.get('USER')
+            password = self.settings_dict.get('PASSWORD')
+            
+            # Create our connection wrapper
+            self._db_connection = CassandraConnection(host, port, keyspace, user, password)
+        
+        call_cassandra_with_reconnect(self._db_connection, self.configure_connection, set_keyspace, login)
+        
         return self._db_connection
     
     @property
