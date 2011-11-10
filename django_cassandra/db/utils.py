@@ -163,7 +163,7 @@ def convert_string_to_list(s):
     # (i.e. if someone could modify the data in Cassandra they could
     # insert arbitrary Python code that would then get evaluated on
     # the client machine. Should have code that parses the list string
-    # to construct the list or else validates the string before calling eval.
+    # to construct the list or else validate the string before calling eval.
     # But for now, during development, we'll just use the quick & dirty eval.
     return eval(s)
 
@@ -172,13 +172,19 @@ def convert_list_to_string(l):
 
 
 class CassandraConnectionError(DatabaseError):
-    def __init__(self):
-        super(CassandraConnectionError,self).__init__('Error connecting to Cassandra database')
+    def __init__(self, message=None):
+        msg = 'Error connecting to Cassandra database'
+        if message:
+            msg += '; ' + message
+        super(CassandraConnectionError,self).__init__(msg)
 
 
 class CassandraAccessError(DatabaseError):
-    def __init__(self):
-        super(CassandraAccessError,self).__init__('Error accessing Cassandra database')
+    def __init__(self, message=None):
+        msg = 'Error accessing Cassandra database'
+        if message:
+            msg += '; ' + message
+        super(CassandraAccessError,self).__init__(msg)
 
 
 def call_cassandra_with_reconnect(connection, fn, *args, **kwargs):
