@@ -178,7 +178,7 @@ class CassandraConnectionError(DatabaseError):
 
 class CassandraAccessError(DatabaseError):
     def __init__(self):
-        super(CassandraAccessException,self).__init__('Error accessing Cassandra database')
+        super(CassandraAccessError,self).__init__('Error accessing Cassandra database')
 
 
 def call_cassandra_with_reconnect(connection, fn, *args, **kwargs):
