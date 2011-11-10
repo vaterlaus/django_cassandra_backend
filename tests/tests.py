@@ -625,6 +625,23 @@ class CompoundKeyTest(TestCase):
         ckm.name = 'bar'
         self.failUnlessRaises(DatabaseError, ckm.save)
 
+    def test_delete_by_id(self):
+        ckm = CompoundKeyModel(name='foo', index=6, extra='hello')
+        ckm.save();
+        ckm = CompoundKeyModel.objects.get(pk='foo|6')
+        ckm.delete()
+        qs = CompoundKeyModel.objects.all()
+        self.assertEqual(len(qs), 0)
+    
+    def test_delete_by_fields(self):
+        ckm = CompoundKeyModel(name='foo', index=6, extra='hello')
+        ckm.save()
+        qs = CompoundKeyModel.objects.filter(name='foo', index=6)
+        qs.delete()
+        qs = CompoundKeyModel.objects.all()
+        self.assertEqual(len(qs), 0)
+        
+        
     def test_custom_separator(self):
         s = Slice(id='default')
         s.save()
