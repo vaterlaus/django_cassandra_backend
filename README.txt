@@ -12,37 +12,38 @@ the backend. You can contact me at: rob.vaterlaus@gmail.com
 
 Installation
 ============
-The backend requires the 0.7 version of Cassandra. 0.7 has several features
+The backend requires at least the 0.7 version of Cassandra. 0.7 has several features
 (e.g. programmatic creation/deletion of keyspaces & column families, secondary index
 support) that are useful for the Django database backend, so I targeted that
 instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
-so the two version are incompatible. I'm currently using the 0.7.4 release. That's
-the only version I'm testing against, so no promises if you try it with a
-different version.
+so the two version are incompatible.
+
+I currently use the 1.0.3 release. That's the only version I test against, so no
+promises if you try it with a different version. I have tested earlier versions
+against the 0.7.x and 0.8.x versions of Cassandra with no problem, so I would expect
+that it would still work.
 
 If you're updating from a previous version of the Cassandra DB backend, then it's
 possible/likely that the format it stores models/fields in Cassandra has changed,
 so you should wipe your Cassandra database. If you're using the default locations
 for things, then this should involve executing something like "rm -rf /var/log/cassandra/*"
-and "rm -rf /var/lib/cassandra/*". Obviously at some point as the backend becomes
-more stable data format compatibility or migration will be supported, but for now
-it's not worth the effort.
+and "rm -rf /var/lib/cassandra/*". At some point as the backend becomes more stable
+data format compatibility or migration will be supported, but for now it's not worth
+the effort.
 
 The backend also requires the Django-nonrel fork of Django and djangotoolbox.
 Both are available here: <http://www.allbuttonspressed.com/projects/django-nonrel>.
 I installed the Django-nonrel version of Django globally in site-packages and
 copied djangotoolbox into the directory where I'm testing the Cassandra backend,
-but there are probably other (better) ways to install those things. I'm using
-the current (as of 2/11/2011) version of both packages. The Django-nonrel is
+but there are probably other (better, e.g. virtualenv) ways to install those things.
+I'm using the current (as of 11/1/2011) version of both packages. The Django-nonrel is
 based on the 1.3 beta 1 release of Django and the version of djangotoolbox is 0.9.2.
 
 You also need to generate the Python Thrift API code as described in the Cassandra
 documentation and copy the generated "cassandra" directory (from Cassandra's
 interface/gen-py directory) over to the top-level Django project directory.
-I'm using the 0.5.0 version of Thrift. I know I had problems generating the
-Java bindings for Cassandra using earlier versions of Thrift, but I'm not sure
-if this is a problem with the Python bindings, so it's possible earlier
-version will work too.
+You should use the 0.6.x version of Thrift if you're using the 0.8 or higher version
+of Cassandra. You should use the 0.5.x version of Thrift if you're using 0.7.
 
 To configure a project to use the Cassandra backend all you have to do is change
 the database settings in the settings.py file. Change the ENGINE value to be
@@ -81,10 +82,30 @@ other backends.
 Now you should be able to use the normal model and query set calls from your
 Django code.
 
+The backend supports query set update operations. This doesn't have the same
+transactional semantics that it would have on a relational database, but it
+does mean that you can use the backend with code that depends on this feature.
+In particular it means that cascading deletes are now supported. For large data
+sets cascading deletes are typically a bad idea, so they are disabled by default.
+To enable them you define a value in the database settings dictionary named
+"CASSANDRA_ENABLE_CASCADING_DELETES" whose value is True.
+
+The backend supports automatic construction of compound id/pk fields that
+are composed of the values of other fields in the model. You would typically
+use this when you have some subset of the fields in the model that together
+uniquely identify that particular instance of the model. Compound key generation
+is enabled for a model by defining a class variable named COMPOUND_KEY_FIELDS
+in a nested class called "CassandraSettings" of the model. The value of the
+COMPOUND_KEY_FIELDS value is a tuple of the names of the fields that are used
+to form the compound key. By default the field values are separated by the '|'
+character, but this separator value can be overridden by defining a class
+variable in the CassandraSettings named COMPOUND_KEY_SEPARATOR whose value is
+the character to use as the separator.
+
 This release includes a test project and app. If you want to use the backend in
-another project you just need to copy the django_cassandra directory to the 
+another project you can copy the django_cassandra directory to the 
 top-level directory of the project (along with the cassandra and djangotoolbox
-directories).
+directories) or else make sure that these are installed in your environment.
 
 What Works
 ==========
@@ -94,12 +115,12 @@ What Works
   queries on the primary key, but your Cassandra cluster must be configured to use the
   OrderPreservingPartitioner if you want to do that. Unfortunately, currently it 
   doesn't fail gracefully if you try to do range queries when using the
-  RandomPartitioner, so just don't do that for now :-)
+  RandomPartitioner, so just don't do that :-)
 - inefficient queries for everything else that can't be done efficiently in
   Cassandra. The basic approach used in the query processing code is to first try
   to prune the number of rows to look at by finding a part of the query that can
-  be evaluated efficiently (i.e. a primary key filter predicate or a secondary
-  index predicate, once that's working). Then it evaluates the remaining filter
+  be evaluated efficiently (i.e. a primary key filter predicate or an exact match
+  secondary index predicate). Then it evaluates the remaining filter
   predicates over the pruned rows to obtain the final result. If there's no part
   of the query that can be evaluated efficiently, then it just fetches the entire
   set of rows and does all of the filtering in the backend code.
@@ -110,10 +131,12 @@ What Works
 - complex queries with Q nodes
 - basic secondary index support. If the db_index attribute of a field is set to True,
   then the backend configures the column family to index on that field/column.
-  Currently Cassandra only really supports exact match lookups with the secondary
-  indexes, so the support is limited. Range lookups are supposed to be supported
-  in the 0.7.1 Cassandra release, so hopefully that will be available fairly soon.
-
+  Currently Cassandra only supports exact match queries with the secondary
+  indexes, so the support is limited. Range queries on columns with secondary indexes
+  will still be inefficient.
+- support for query update operations (and thus cascading deletes, but that's
+  disabled by default)
+  
 What Doesn't Work (Yet)
 =======================
 - I haven't tested all of the different field types, so there are probably
@@ -124,13 +147,16 @@ What Doesn't Work (Yet)
   of the possible field types.
 - joins
 - chunked queries. It just tries to get everything all at once from Cassandra.
-  Currently the maximum that it can get (i.e. the count value in the Cassandra
-  Thrift API) is set semi-arbitrarily to 1000, so if you try to query over a
-  column family with more rows (or columns) than that it may not work.
-  Probably the value could be set higher than that, but at some point Cassandra
-  fails if it's too big (i.e. it didn't work if I set it to 0x7fffffff).
-  If you want to make it bigger you can change the MAX_FETCH_COUNT variable
-  in compiler.py.
+  Currently the maximum number of keys/rows that it can fetch (i.e. the count
+  value in the Cassandra Thrift API) defaults semi-arbitrarily to 1000000, so
+  if you try to query over a column family with more returned rows than that
+  it won't work (and if you're anywhere near approaching that limit you're going
+  to be using gobs of memory). Similarly, there's a limit of 10000 for the number
+  of columns returned in a given row. It's doubtful that anyone would come
+  anywhere near that limit, since that is dictated by the number of fields there
+  are in the Django model. You override either/both of these limits by setting
+  the CASSANDRA_MAX_KEY_COUNT and/or CASSANDRA_MAX_COLUMN_COUNT settings in the
+  database settings in settings.py.
 - ListModel/ListField support from djangotoolbox (I think?). I haven't
   investigated how this works and if it's feasible to support in Cassandra,
   although I'm guessing it probably wouldn't be too hard. For now, this means
@@ -138,14 +164,6 @@ What Doesn't Work (Yet)
   in your installed apps. I made a preliminary pass to try to get this to
   work, but it turned out to be more difficult than expected, so it exists
   in a partially-completed form in the source.
-- there's no way to configure the read & write consistency levels used when
-  querying or inserting/mutating columns in Cassandra. My plan was to add global
-  database settings and possibly per-model settings to configure those things,
-  but I haven't gotten to it yet. Per-operation overrides of these values
-- Cassandra authentication. Actually this may work but I haven't tested it yet.
-  There's code in there that tries to login to Cassandra if the USER and
-  PASSWORD are specified in the database settings, but I've only tested with
-  the AllowAllAuthenticator.
 - probably a lot of other stuff that I've forgotten or am unaware of :-)
   
 Known Issues
@@ -182,6 +200,15 @@ Known Issues
   these cases.
 
 
+Changes for 0.2.1
+=================
+
+- Fixed typo in the CassandraAccessError class
+- Added support for customizing the arguments that are used to create the
+  keyspace. In particular this allows you to specify the durable_writes
+  setting that was added in Cassandra 1.0 if you want to disable that for
+  a keyspace.
+  
 Changes for 0.2
 ===============
 - added support for automatic construction of compound id/pk fields that
@@ -189,7 +216,7 @@ are composed of the values of other fields in the model. You would typically
 use this when you have some subset of the fields in the model that together
 uniquely identify that particular instance of the model. Compound key generation
 is enabled for a model by defining a class variable named COMPOUND_KEY_FIELDS
-in the nested class called "CassandraSettings" of the model. The value of the
+in a nested class called "CassandraSettings" of the model. The value of the
 COMPOUND_KEY_FIELDS value is a tuple of the names of the fields that are used
 to form the compound key. By default the field values are separated by the '|'
 character, but this separator value can be overridden by defining a class
@@ -198,23 +225,16 @@ the character to use as the separator.
 - added support for running under the 0.8 version of Cassandra. This included
 fixing a bug where the secondary index names were not properly scoped with
 its associated column family (which "worked" before because Cassandra wasn't
-properly checking for conflicts) and properly settings the replication factor
-as a strategy option instead of a field in the KsDef struct. The code now does
-check of the API version so it can detect whether it's running against the
-0.7 or 0.8 version of Cassandra, so it still works under 0.7.
-- added support for query set update operations. This doesn't have the same
-transactional semantics that it would have on a relational database, but it
-does mean that you can use the backend with code that depends on this feature.
-In particular it means that cascading deletes can now be supported.
-- Optional support for cascading deletes. For large data sets cascading deletes
-are typically a bad idea, so they are disabled by default. To enable them you
-define a value in the database settings dictionary named
-"CASSANDRA_ENABLE_CASCADING_DELETES" whose value is True.
+properly checking for conflicts) and properly setting the replication factor
+as a strategy option instead of a field in the KsDef struct. The code checks
+the API version to detect whether it's running against the 0.7 or 0.8 version
+of Cassandra, so it still works under 0.7.
+- support for query set update operations
+- support for cascading deletes (disabled by default)
 - fixed some bugs in the constructors of some exception classes
 - cleaned up the code for handling reconnecting to Cassandra if there's a
 disruption in the connection (e.g. Cassandra restarting).
 
-support
 Changes for 0.1.7
 =================
 

@@ -203,28 +203,49 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             try:
                 self._db_connection.set_keyspace()
             except Exception, e:
-                replication_factor = self.settings_dict.get('CASSANDRA_REPLICATION_FACTOR', 1)
-                strategy_class = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY', 'org.apache.cassandra.locator.SimpleStrategy')
-                strategy_options = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY_OPTIONS', {})
-                if type(strategy_options) != dict:
-                    raise DatabaseError('CASSANDRA_REPLICATION_STRATEGY_OPTIONS must be a dictionary')
-                
-                keyspace_def_args = {
+                # Set up the default settings for the keyspace
+                keyspace_def_settings = {
                     'name': self._db_connection.keyspace,
-                    'strategy_class': strategy_class,
-                    'strategy_options': strategy_options,
+                    'strategy_class': 'org.apache.cassandra.locator.SimpleStrategy',
+                    'strategy_options': {},
                     'cf_defs': []}
+            
+                # Apply any overrides for the keyspace settings
+                custom_keyspace_def_settings = self.settings_dict.get('CASSANDRA_KEYSPACE_DEF_SETTINGS')
+                if custom_keyspace_def_settings:
+                    keyspace_def_settings.update(custom_keyspace_def_settings)
                 
-                if self.supports_replication_factor_as_strategy_option:
-                    if 'replication_factor' not in strategy_options:
-                        strategy_options['replication_factor'] = str(replication_factor)
-                else:
-                    keyspace_def_args['replication_factor'] = replication_factor
-
-                keyspace_def = KsDef(**keyspace_def_args)
+                # Apply any overrides for the replication strategy
+                # Note: This could be done by the user using the 
+                # CASSANDRA_KEYSPACE_DEF_SETTINGS, but the following customizations are
+                # still supported for backwards compatibility with older versions of the backend
+                strategy_class = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY')
+                if strategy_class:
+                    keyspace_def_settings['strategy_class'] = strategy_class
+                
+                # Apply an override of the strategy options
+                strategy_options = self.settings_dict.get('CASSANDRA_REPLICATION_STRATEGY_OPTIONS')
+                if strategy_options:
+                    if type(strategy_options) != dict:
+                        raise DatabaseError('CASSANDRA_REPLICATION_STRATEGY_OPTIONS must be a dictionary')
+                    keyspace_def_settings['strategy_options'].update(strategy_options)
+                
+                # Apply an override of the replication factor. Depending on the version of
+                # Cassandra this may be applied to either the strategy options or the top-level
+                # keyspace def settings
+                replication_factor = self.settings_dict.get('CASSANDRA_REPLICATION_FACTOR')
+                replication_factor_parent = keyspace_def_settings['strategy_options'] \
+                    if self.supports_replication_factor_as_strategy_option else keyspace_def_settings
+                if replication_factor:
+                    replication_factor_parent['replication_factor'] = str(replication_factor)
+                elif 'replication_factor' not in replication_factor_parent:
+                    replication_factor_parent['replication_factor'] = '1'
+                
+                keyspace_def = KsDef(**keyspace_def_settings)
                 self._db_connection.get_client().system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
-        
+    
+    
     def get_db_connection(self, set_keyspace=False, login=False):
         if not self._db_connection:
             # Get the host and port specified in the database backend settings.

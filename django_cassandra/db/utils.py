@@ -175,7 +175,7 @@ class CassandraConnectionError(DatabaseError):
     def __init__(self, message=None):
         msg = 'Error connecting to Cassandra database'
         if message:
-            msg += '; ' + message
+            msg += '; ' + str(message)
         super(CassandraConnectionError,self).__init__(msg)
 
 
@@ -183,7 +183,7 @@ class CassandraAccessError(DatabaseError):
     def __init__(self, message=None):
         msg = 'Error accessing Cassandra database'
         if message:
-            msg += '; ' + message
+            msg += '; ' + str(message)
         super(CassandraAccessError,self).__init__(msg)
 
 
@@ -195,9 +195,9 @@ def call_cassandra_with_reconnect(connection, fn, *args, **kwargs):
             connection.reopen()
             results = fn(*args, **kwargs)
     except TTransport.TTransportException, e:
-        raise CassandraConnectionError()
+        raise CassandraConnectionError(e)
     except Exception, e:
-        raise CassandraAccessError()
+        raise CassandraAccessError(e)
 
     return results
 
