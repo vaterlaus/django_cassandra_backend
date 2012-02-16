@@ -386,6 +386,8 @@ class SQLCompiler(NonrelCompiler):
             if isinstance(value, (list, tuple)) and len(value):
                 value = [self.convert_value_for_db(db_sub_type, subvalue) for subvalue in value]
             value = convert_list_to_string(value)
+        elif type(value) is list:
+            value = [self.convert_value_for_db(db_type, item) for item in value]
         elif db_type == 'datetime':
             value = value.strftime('%Y-%m-%d %H:%M:%S.%f')
         elif db_type == 'time':
@@ -396,7 +398,7 @@ class SQLCompiler(NonrelCompiler):
             value = str(value)
         elif db_type == 'id':
             value = unicode(value)
-        elif ((type(value) is not list) and (type(value) is not unicode) and (type(value) is not str)):
+        elif (type(value) is not unicode) and (type(value) is not str):
             value = unicode(value)
         
         # always store strings as utf-8

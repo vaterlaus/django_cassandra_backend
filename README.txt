@@ -200,6 +200,12 @@ Known Issues
   these cases.
 
 
+Changes for 0.2.2
+=================
+- fixed a bug with handling delete operations where it would sometimes incorrectly
+  delete all items whose values were a substring of the specified query value
+  instead of only if there was an exact match.
+  
 Changes for 0.2.1
 =================
 
