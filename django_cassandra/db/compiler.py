@@ -454,7 +454,7 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
                 compound_key_values = key.split(separator)
                 for field_name, compound_key_value in zip(compound_key_fields, compound_key_values):
                     if field_name in data and data[field_name] != compound_key_value:
-                        raise DatabaseError("The value of the compound key doesn't mismatch the values of the individual fields")
+                        raise DatabaseError("The value of the compound key doesn't match the values of the individual fields")
         else:
             if compound_key_fields is not None:
                 try:
