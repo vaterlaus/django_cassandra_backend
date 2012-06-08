@@ -100,7 +100,7 @@ class CassandraQuery(NonrelQuery):
         
         if range_predicate._is_exact():
             column_list = call_cassandra_with_reconnect(db_connection,
-                db_connection.get_client().get_slice, range_predicate.start,
+               Cassandra.Client.get_slice, range_predicate.start,
                 column_parent, slice_predicate, self.connection.read_consistency_level)
             if column_list:
                 row = self._convert_column_list_to_row(column_list, self.pk_column, range_predicate.start)
@@ -125,7 +125,7 @@ class CassandraQuery(NonrelQuery):
             key_range = KeyRange(start_key=key_start, end_key=key_end,
                 count=self.connection.max_key_count)
             key_slice = call_cassandra_with_reconnect(db_connection,
-                db_connection.get_client().get_range_slices, column_parent,
+                Cassandra.Client.get_range_slices, column_parent,
                 slice_predicate, key_range, self.connection.read_consistency_level)
             
             rows = self._convert_key_slice_to_rows(key_slice)
@@ -166,7 +166,7 @@ class CassandraQuery(NonrelQuery):
         slice_predicate = SlicePredicate(slice_range=SliceRange(start='', finish='', count=self.connection.max_column_count))
         
         key_slice = call_cassandra_with_reconnect(db_connection,
-            db_connection.get_client().get_indexed_slices,
+            Cassandra.Client.get_indexed_slices,
             column_parent, index_clause, slice_predicate,
             self.connection.read_consistency_level)
         rows = self._convert_key_slice_to_rows(key_slice)
@@ -192,7 +192,7 @@ class CassandraQuery(NonrelQuery):
         #key_range = KeyRange(start_key='\x01', end_key=end_key, count=self.connection.max_key_count)
         
         key_slice = call_cassandra_with_reconnect(db_connection,
-            db_connection.get_client().get_range_slices, column_parent,
+            Cassandra.Client.get_range_slices, column_parent,
             slice_predicate, key_range, self.connection.read_consistency_level)
         rows = self._convert_key_slice_to_rows(key_slice)
         
@@ -246,7 +246,7 @@ class CassandraQuery(NonrelQuery):
             mutation_map[item[self.pk_column]] = {column_family: [Mutation(deletion=Deletion(timestamp=timestamp))]}
         db_connection = self.connection.db_connection
         call_cassandra_with_reconnect(db_connection,
-            db_connection.get_client().batch_mutate, mutation_map,
+            Cassandra.Client.batch_mutate, mutation_map,
             self.connection.write_consistency_level)
         
 
@@ -482,7 +482,7 @@ class SQLInsertCompiler(NonrelInsertCompiler, SQLCompiler):
         db_connection = self.connection.db_connection
         column_family = self.query.get_meta().db_table
         call_cassandra_with_reconnect(db_connection,
-            db_connection.get_client().batch_mutate, {key: {column_family: mutation_list}},
+            Cassandra.Client.batch_mutate, {key: {column_family: mutation_list}},
             self.connection.write_consistency_level)
         
         if return_id:
@@ -541,8 +541,8 @@ class SQLUpdateCompiler(NonrelUpdateCompiler, SQLCompiler):
         
         db_connection = self.connection.db_connection
         call_cassandra_with_reconnect(db_connection,
-            db_connection.get_client().batch_mutate,
-            batch_mutate_data, self.connection.write_consistency_level)
+            Cassandra.Client.batch_mutate, batch_mutate_data,
+            self.connection.write_consistency_level)
         
         return row_count
     

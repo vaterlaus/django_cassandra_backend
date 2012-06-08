@@ -13,7 +13,12 @@
 #   limitations under the License.
 
 import time
+from thrift import Thrift
 from thrift.transport import TTransport
+from thrift.transport import TSocket
+from thrift.protocol import TBinaryProtocol
+from cassandra import Cassandra
+#from cassandra.ttypes import *
 from django.db.utils import DatabaseError
 
 def _cmp_to_key(comparison_function):
@@ -171,6 +176,94 @@ def convert_list_to_string(l):
     return unicode(l)
 
 
+class CassandraConnection(object):
+    def __init__(self, host, port, keyspace, user, password):
+        self.host = host
+        self.port = port
+        self.keyspace = keyspace
+        self.user = user
+        self.password = password
+        self.transport = None
+        self.client = None
+        self.keyspace_set = False
+        self.logged_in = False
+        
+    def commit(self):
+        pass
+
+    def set_keyspace(self):
+        if not self.keyspace_set:
+            try:
+                if self.client:
+                    self.client.set_keyspace(self.keyspace)
+                    self.keyspace_set = True
+            except Exception, e:
+                # In this case we won't have set keyspace_set to true, so we'll throw the
+                # exception below where it also handles the case that self.client
+                # is not valid yet.
+                pass
+            if not self.keyspace_set:
+                raise DatabaseError('Error setting keyspace: %s; %s' % (self.keyspace, str(e)))
+    
+    def login(self):
+        # TODO: This user/password auth code hasn't been tested
+        if not self.logged_in:
+            if self.user:
+                try:
+                    if self.client:
+                        credentials = {'username': self.user, 'password': self.password}
+                        self.client.login(AuthenticationRequest(credentials))
+                        self.logged_in = True
+                except Exception, e:
+                    # In this case we won't have set logged_in to true, so we'll throw the
+                    # exception below where it also handles the case that self.client
+                    # is not valid yet.
+                    pass
+                if not self.logged_in:
+                    raise DatabaseError('Error logging in to keyspace: %s; %s' % (self.keyspace, str(e)))
+            else:
+                self.logged_in = True
+            
+    def open(self, set_keyspace=False, login=False):
+        if self.transport == None:
+            # Create the client connection to the Cassandra daemon
+            socket = TSocket.TSocket(self.host, int(self.port))
+            transport = TTransport.TFramedTransport(TTransport.TBufferedTransport(socket))
+            protocol = TBinaryProtocol.TBinaryProtocolAccelerated(transport)
+            transport.open()
+            self.transport = transport
+            self.client = Cassandra.Client(protocol)
+            
+        if login:
+            self.login()
+        
+        if set_keyspace:
+            self.set_keyspace()
+                
+    def close(self):
+        if self.transport != None:
+            try:
+                self.transport.close()
+            except Exception, e:
+                pass
+            self.transport = None
+            self.client = None
+            self.keyspace_set = False
+            self.logged_in = False
+            
+    def is_connected(self):
+        return self.transport != None
+    
+    def get_client(self):
+        if self.client == None:
+            self.open(True, True)
+        return self.client
+    
+    def reopen(self):
+        self.close()
+        self.open(True, True)
+            
+
 class CassandraConnectionError(DatabaseError):
     def __init__(self, message=None):
         msg = 'Error connecting to Cassandra database'
@@ -190,10 +283,10 @@ class CassandraAccessError(DatabaseError):
 def call_cassandra_with_reconnect(connection, fn, *args, **kwargs):
     try:
         try:
-            results = fn(*args, **kwargs)
+            results = fn(connection.get_client(), *args, **kwargs)
         except TTransport.TTransportException:
             connection.reopen()
-            results = fn(*args, **kwargs)
+            results = fn(connection.get_client(), *args, **kwargs)
     except TTransport.TTransportException, e:
         raise CassandraConnectionError(e)
     except Exception, e:

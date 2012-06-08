@@ -19,17 +19,14 @@ from djangotoolbox.db.base import NonrelDatabaseFeatures, \
     NonrelDatabaseValidation, NonrelDatabaseIntrospection, \
     NonrelDatabaseCreation
 
-from thrift import Thrift
-from thrift.transport import TTransport
-from thrift.transport import TSocket
-from thrift.protocol import TBinaryProtocol
-from cassandra import Cassandra
-from cassandra.ttypes import *
 import re
 import time
 from .creation import DatabaseCreation
 from .introspection import DatabaseIntrospection
-from .utils import call_cassandra_with_reconnect
+from .utils import CassandraConnection, CassandraConnectionError, CassandraAccessError
+from thrift.transport import TTransport
+from cassandra.ttypes import *
+
 
 class DatabaseFeatures(NonrelDatabaseFeatures):
     string_based_auto_field = True
@@ -37,7 +34,8 @@ class DatabaseFeatures(NonrelDatabaseFeatures):
     def __init__(self, connection):
         super(DatabaseFeatures, self).__init__(connection)
         self.supports_deleting_related_objects = connection.settings_dict.get('CASSANDRA_ENABLE_CASCADING_DELETES', False)
-        
+
+
 class DatabaseOperations(NonrelDatabaseOperations):
     compiler_module = __name__.rsplit('.', 1)[0] + '.compiler'
     
@@ -64,94 +62,6 @@ class DatabaseClient(NonrelDatabaseClient):
 class DatabaseValidation(NonrelDatabaseValidation):
     pass
 
-# TODO: Maybe move this somewhere else? db.utils.py maybe?
-class CassandraConnection(object):
-    def __init__(self, host, port, keyspace, user, password):
-        self.host = host
-        self.port = port
-        self.keyspace = keyspace
-        self.user = user
-        self.password = password
-        self.transport = None
-        self.client = None
-        self.keyspace_set = False
-        self.logged_in = False
-        
-    def commit(self):
-        pass
-
-    def set_keyspace(self):
-        if not self.keyspace_set:
-            try:
-                if self.client:
-                    self.client.set_keyspace(self.keyspace)
-                    self.keyspace_set = True
-            except Exception, e:
-                # In this case we won't have set keyspace_set to true, so we'll throw the
-                # exception below where it also handles the case that self.client
-                # is not valid yet.
-                pass
-            if not self.keyspace_set:
-                raise DatabaseError('Error setting keyspace: %s; %s' % (self.keyspace, str(e)))
-    
-    def login(self):
-        # TODO: This user/password auth code hasn't been tested
-        if not self.logged_in:
-            if self.user:
-                try:
-                    if self.client:
-                        credentials = {'username': self.user, 'password': self.password}
-                        self.client.login(AuthenticationRequest(credentials))
-                        self.logged_in = True
-                except Exception, e:
-                    # In this case we won't have set logged_in to true, so we'll throw the
-                    # exception below where it also handles the case that self.client
-                    # is not valid yet.
-                    pass
-                if not self.logged_in:
-                    raise DatabaseError('Error logging in to keyspace: %s; %s' % (self.keyspace, str(e)))
-            else:
-                self.logged_in = True
-            
-    def open(self, set_keyspace=False, login=False):
-        if self.transport == None:
-            # Create the client connection to the Cassandra daemon
-            socket = TSocket.TSocket(self.host, int(self.port))
-            transport = TTransport.TFramedTransport(TTransport.TBufferedTransport(socket))
-            protocol = TBinaryProtocol.TBinaryProtocolAccelerated(transport)
-            transport.open()
-            self.transport = transport
-            self.client = Cassandra.Client(protocol)
-            
-        if login:
-            self.login()
-        
-        if set_keyspace:
-            self.set_keyspace()
-                
-    def close(self):
-        if self.transport != None:
-            try:
-                self.transport.close()
-            except Exception, e:
-                pass
-            self.transport = None
-            self.client = None
-            self.keyspace_set = False
-            self.logged_in = False
-            
-    def is_connected(self):
-        return self.transport != None
-    
-    def get_client(self):
-        if self.client == None:
-            self.open(True, True)
-        return self.client
-    
-    def reopen(self):
-        self.close()
-        self.open(True, True)
-            
 class DatabaseWrapper(NonrelDatabaseWrapper):
     def __init__(self, *args, **kwds):
         super(DatabaseWrapper, self).__init__(*args, **kwds)
@@ -244,7 +154,7 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
                 keyspace_def = KsDef(**keyspace_def_settings)
                 self._db_connection.get_client().system_add_keyspace(keyspace_def)
                 self._db_connection.set_keyspace()
-    
+                
     
     def get_db_connection(self, set_keyspace=False, login=False):
         if not self._db_connection:
@@ -267,8 +177,13 @@ class DatabaseWrapper(NonrelDatabaseWrapper):
             
             # Create our connection wrapper
             self._db_connection = CassandraConnection(host, port, keyspace, user, password)
-        
-        call_cassandra_with_reconnect(self._db_connection, self.configure_connection, set_keyspace, login)
+            
+        try:
+            self.configure_connection(set_keyspace, login)
+        except TTransport.TTransportException, e:
+            raise CassandraConnectionError(e)
+        except Exception, e:
+            raise CassandraAccessError(e)
         
         return self._db_connection
     

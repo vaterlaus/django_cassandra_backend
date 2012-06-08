@@ -199,6 +199,10 @@ Known Issues
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
 
+Changes for 0.2.3
+=================
+- fixed a bug with the retry/reconnect logic where it would use a stale Cassandra
+  Client object.
 
 Changes for 0.2.2
 =================
