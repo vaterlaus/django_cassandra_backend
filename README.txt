@@ -18,7 +18,7 @@ support) that are useful for the Django database backend, so I targeted that
 instead of 0.6. Unfortunately, the Cassandra Thrift API changed between 0.6 and 0.7,
 so the two version are incompatible.
 
-I currently use the 1.0.3 release. That's the only version I test against, so no
+I currently use the 1.0.10 release. That's the only version I test against, so no
 promises if you try it with a different version. I have tested earlier versions
 against the 0.7.x and 0.8.x versions of Cassandra with no problem, so I would expect
 that it would still work.
@@ -198,6 +198,13 @@ Known Issues
   daemon not running, a versioning mismatch between client and Cassandra
   daemon, etc. Currently you just get a somewhat uninformative exception in
   these cases.
+
+Changes for 0.2.4
+=================
+- switch the timestamp format to use the system time in microseconds to be
+  consistent with the standard Cassandra timestamps used by other Cassandra
+  components (e.g. the Cassandra CLI) and to hopefully eliminate issues with
+  timestamp collisions across multiple Django processes.
 
 Changes for 0.2.3
 =================

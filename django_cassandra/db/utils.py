@@ -142,26 +142,33 @@ def combine_rows(rows1, rows2, op, primary_key_column):
     
     return combined_rows
 
-_last_time = None
-_last_counter = None
+_last_timestamp = None
     
 def get_next_timestamp():
     # The timestamp is a 64-bit integer
-    # We use the top 44 bits for the current time in milliseconds since the
-    # epoch. The low 20 bits are a counter that is incremented if the current
-    # time value from the top 44 bits is the same as the last
-    # time value. This guarantees that a new timestamp is always
-    # greater than the previous timestamp
-    global _last_time, _last_counter
-    current_time = int(time.time() * 1000)
+    # We now use the standard Cassandra timestamp format of the
+    # current system time in microseconds. We also keep track of the
+    # last timestamp we returned and if the current time is less than
+    # that, then we just advance the timestamp by 1 to make sure we
+    # return monotonically increasing timestamps. Note that this isn't
+    # guaranteed to handle the fairly common Django deployment model of
+    # having multiple Django processes that are dispatched to from a
+    # web server like Apache. In practice I don't think that case will be
+    # a problem though (at least with current hardware) because I don't
+    # think you could have two consecutive calls to Django from another
+    # process that would be dispatched to two different Django processes
+    # that would happen in the same microsecond.
+
+    global _last_timestamp
+
+    timestamp = int(time.time() * 1000000)
     
-    if (_last_time == None) or (current_time > _last_time):
-        _last_time = current_time
-        _last_counter = 0
-    else:
-        _last_counter += 1
+    if (_last_timestamp != None) and (timestamp <= _last_timestamp):
+        timestamp = _last_timestamp + 1
+
+    _last_timestamp = timestamp
     
-    return _last_time * 0x100000 + _last_counter
+    return timestamp
 
 def convert_string_to_list(s):
     # FIXME: Shouldn't use eval here, because of security considerations
